@@ -2,4 +2,6 @@ build/
 build_new/
 build_core/
 build_clean/
+build_*/
 logs/
+corekit_mem_*.json

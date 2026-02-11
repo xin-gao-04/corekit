@@ -37,6 +37,14 @@ corekit::task::IExecutor* corekit_create_executor() {
   return new corekit::task::ThreadPoolExecutor();
 }
 
+corekit::task::IExecutor* corekit_create_executor_v2(
+    const corekit::task::ExecutorOptions* options) {
+  if (options == NULL) {
+    return new corekit::task::ThreadPoolExecutor();
+  }
+  return new corekit::task::ThreadPoolExecutor(*options);
+}
+
 void corekit_destroy_executor(corekit::task::IExecutor* executor) { delete executor; }
 
 corekit::task::ITaskGraph* corekit_create_task_graph() {

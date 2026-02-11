@@ -46,6 +46,19 @@ class IObjectPool {
 
   // 当前可借对象数量（近似值）。
   virtual std::size_t Available() const = 0;
+
+  // 池中累计创建对象总数。
+  virtual std::size_t TotalAllocated() const = 0;
+
+  // 回收空闲对象，保留 keep_free 个可复用对象。
+  // 返回：kOk 表示裁剪完成。
+  virtual api::Status Trim(std::size_t keep_free) = 0;
+
+  // 清理池中全部对象（需确保对象均已归还）。
+  // 返回：
+  // - kOk：清理成功。
+  // - kWouldBlock：仍有对象被借出，不能安全清理。
+  virtual api::Status Clear() = 0;
 };
 
 }  // namespace memory

@@ -34,6 +34,17 @@ class IQueue {
   // 返回语义与 TryPush(const T&) 一致。
   virtual api::Status TryPushMove(T&& value) = 0;
 
+  // 批量非阻塞入队。
+  // 参数：
+  // - values: 输入数组首地址。
+  // - count: 输入元素数量。
+  // - pushed: 实际入队数量（可为 nullptr）。
+  // 返回：
+  // - kOk：全部入队成功。
+  // - kWouldBlock：部分或全部元素未能写入（通常为容量限制）。
+  // - kInvalidArgument：values 为 nullptr 且 count > 0。
+  virtual api::Status TryPushBatch(const T* values, std::size_t count, std::size_t* pushed) = 0;
+
   // 非阻塞出队。
   // 返回：
   // - kOk：value 为出队元素。
@@ -47,6 +58,24 @@ class IQueue {
 
   // 返回当前是否为空（近似语义，适合快速分支判断）。
   virtual bool IsEmpty() const = 0;
+
+  // 非阻塞窥视队首元素，不移除数据。
+  // 返回：
+  // - kOk：*out 为当前队首。
+  // - kWouldBlock：队列为空。
+  // - kInvalidArgument：out 为 nullptr。
+  virtual api::Status TryPeek(T* out) const = 0;
+
+  // 批量非阻塞出队。
+  // 参数：
+  // - out_values: 输出数组首地址。
+  // - capacity: 输出缓冲可写元素数。
+  // - popped: 实际出队数量（可为 nullptr）。
+  // 返回：
+  // - kOk：至少成功出队 1 个元素。
+  // - kWouldBlock：当前没有可读数据。
+  // - kInvalidArgument：out_values 为 nullptr 且 capacity > 0。
+  virtual api::Status TryPopBatch(T* out_values, std::size_t capacity, std::size_t* popped) = 0;
 
   // 清空队列中的当前元素。
   virtual api::Status Clear() = 0;

@@ -5,7 +5,7 @@
 namespace corekit {
 namespace api {
 
-static const std::uint32_t kApiVersionMajor = 1;
+static const std::uint32_t kApiVersionMajor = 2;
 static const std::uint32_t kApiVersionMinor = 0;
 static const std::uint32_t kApiVersionPatch = 0;
 static const std::uint32_t kApiVersion =

@@ -68,6 +68,8 @@ add_library(corekit
     src/log_manager.cpp
     src/log/log_manager_adapter.cpp
     src/ipc/shared_memory_channel.cpp
+    src/json/json_codec.cpp
+    src/memory/global_allocator.cpp
     src/memory/system_allocator.cpp
     src/task/thread_pool_executor.cpp
     src/task/simple_task_graph.cpp
@@ -152,6 +154,7 @@ endif()
 
 if (COREKIT_BUILD_EXAMPLES)
   configure_file(config/logging.conf ${CMAKE_CURRENT_BINARY_DIR}/config/logging.conf COPYONLY)
+  configure_file(config/corekit.json ${CMAKE_CURRENT_BINARY_DIR}/config/corekit.json COPYONLY)
 endif()
 
 

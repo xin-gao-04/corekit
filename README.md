@@ -8,10 +8,9 @@ A dedicated C++ utility toolkit for engineering and simulation workloads, delive
 - Logging interface adapter over legacy glog backend.
 - IPC v1 interface and Windows shared-memory ring-buffer implementation.
 - Allocator (`SystemAllocator`), executor (`ThreadPoolExecutor`), and task graph (`SimpleTaskGraph`) concrete implementations.
-- Header-only usable containers and pool implementations:
-  - `corekit::concurrent::BasicMutexQueue<T>`
-  - `corekit::concurrent::BasicConcurrentMap<K, V>`
-  - `corekit::memory::BasicObjectPool<T>`
+- Global allocator entry with macro-friendly usage (`COREKIT_ALLOC`, `COREKIT_FREE`, `COREKIT_NEW`, `COREKIT_DELETE`).
+- JSON codec wrapper (`corekit::json::JsonCodec`) and JSON memory policy config.
+- Internal container/pool implementations under `src/` using global allocator routing.
 - Design docs and diagrams under `docs/`.
 - Third-party vendor entry folder: `3party/`.
 
@@ -35,14 +34,26 @@ if (st.ok()) {
 corekit_destroy_log_manager(logger);
 ```
 
-## Header-only utility usage
+## Container implementation usage (project-internal)
+Concrete container implementations are intentionally placed under `src/` and are used by this project/tests.
+Public SDK exposure remains interface-first (`i_*.hpp`) for stable DLL boundaries.
+
+## Global memory allocation macros
 ```cpp
 #include "corekit/corekit.hpp"
 
-corekit::concurrent::BasicMutexQueue<int> q(16);
-q.TryPush(7);
-auto r = q.TryPop();
+corekit::memory::GlobalAllocator::ConfigureFromFile("config/corekit.json");
+
+void* p = COREKIT_ALLOC(256);
+COREKIT_FREE(p);
+
+int* v = COREKIT_NEW(int, 7);
+COREKIT_DELETE(v);
 ```
+
+Memory JSON schema:
+- `memory.backend = "system|tbb|mimalloc"`
+- `memory.strict_backend = true|false`
 
 ## IPC usage (v1)
 - Server creates a named channel via `OpenServer`.
@@ -54,9 +65,11 @@ auto r = q.TryPop();
 - `include/corekit/log/ilog_manager.hpp`
 - `include/corekit/ipc/i_channel.hpp`
 - `include/corekit/api/factory.hpp`
-- `include/corekit/concurrent/basic_queue.hpp`
-- `include/corekit/concurrent/basic_map.hpp`
-- `include/corekit/memory/basic_object_pool.hpp`
+- `include/corekit/concurrent/i_queue.hpp`
+- `include/corekit/concurrent/i_map.hpp`
+- `include/corekit/memory/i_object_pool.hpp`
+- `include/corekit/memory/i_global_allocator.hpp`
+- `include/corekit/json/i_json.hpp`
 
 ## Notes
 - Current IPC backend implementation is Windows-first (`CreateFileMapping` based).

@@ -1,4 +1,8 @@
 #include "corekit/corekit.hpp"
+#include "src/concurrent/basic_map_impl.hpp"
+#include "src/concurrent/basic_queue_impl.hpp"
+#include "src/concurrent/moodycamel_queue_impl.hpp"
+#include "src/memory/basic_object_pool_impl.hpp"
 
 #include <cstdio>
 

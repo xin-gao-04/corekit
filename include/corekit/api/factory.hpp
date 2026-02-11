@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "corekit/api/export.hpp"
+#include "corekit/task/iexecutor.hpp"
 
 namespace corekit {
 namespace log {
@@ -15,7 +16,6 @@ namespace memory {
 class IAllocator;
 }
 namespace task {
-class IExecutor;
 class ITaskGraph;
 }
 }  // namespace corekit
@@ -45,6 +45,10 @@ COREKIT_API void corekit_destroy_allocator(corekit::memory::IAllocator* allocato
 
 // Create an executor instance.
 COREKIT_API corekit::task::IExecutor* corekit_create_executor();
+
+// Create an executor instance with explicit options.
+COREKIT_API corekit::task::IExecutor* corekit_create_executor_v2(
+    const corekit::task::ExecutorOptions* options);
 
 // Destroy an executor created by corekit_create_executor.
 COREKIT_API void corekit_destroy_executor(corekit::task::IExecutor* executor);

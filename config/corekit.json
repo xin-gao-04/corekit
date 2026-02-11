@@ -1,0 +1,6 @@
+{
+  "memory": {
+    "backend": "system",
+    "strict_backend": true
+  }
+}

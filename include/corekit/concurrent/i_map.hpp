@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "corekit/api/status.hpp"
 #include "corekit/api/version.hpp"
@@ -26,6 +27,11 @@ class IConcurrentMap {
   // 插入或更新键值。
   // 返回：kOk 表示写入成功。
   virtual api::Status Upsert(const K& key, const V& value) = 0;
+
+  // 插入或赋值，同时告知是否发生“新插入”。
+  // 参数：
+  // - inserted: 可选输出；true 表示新增，false 表示覆盖已有值。
+  virtual api::Status InsertOrAssign(const K& key, const V& value, bool* inserted) = 0;
 
   // 仅当 key 不存在时插入。
   // 返回：
@@ -55,6 +61,14 @@ class IConcurrentMap {
 
   // 清空映射。
   virtual api::Status Clear() = 0;
+
+  // 为即将写入的元素预留容量，减少重哈希停顿。
+  virtual api::Status Reserve(std::size_t expected_size) = 0;
+
+  // 导出当前 key 快照。
+  // 参数：
+  // - keys: 输出容器（会先清空再填充）。
+  virtual api::Status SnapshotKeys(std::vector<K>* keys) const = 0;
 
   // 返回近似元素个数。
   virtual std::size_t ApproxSize() const = 0;
