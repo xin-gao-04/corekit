@@ -1,0 +1,26 @@
+@startuml
+skinparam monochrome true
+
+participant Producer
+participant Channel
+participant SharedMemory
+participant Consumer
+
+Producer -> Channel: TrySend(data)
+Channel -> SharedMemory: check write/read
+alt queue full
+  Channel --> Producer: kWouldBlock
+else queue available
+  Channel -> SharedMemory: write slot + advance write index
+  Channel --> Producer: kOk
+end
+
+Consumer -> Channel: TryRecv(buffer)
+Channel -> SharedMemory: check read/write
+alt queue empty
+  Channel --> Consumer: kWouldBlock
+else message available
+  Channel -> SharedMemory: copy slot payload + advance read index
+  Channel --> Consumer: kOk(size)
+end
+@enduml

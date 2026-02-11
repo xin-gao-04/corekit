@@ -1,0 +1,16 @@
+@startuml
+skinparam monochrome true
+
+participant User
+participant IExecutor
+participant ThreadPoolExecutor
+participant Worker
+
+User -> IExecutor: Submit(fn, ctx)
+IExecutor -> ThreadPoolExecutor: Enqueue task
+ThreadPoolExecutor -> Worker: wake one worker
+Worker -> Worker: execute fn(ctx)
+User -> IExecutor: WaitAll()
+IExecutor -> ThreadPoolExecutor: wait until pending=0 and active=0
+ThreadPoolExecutor --> User: kOk
+@enduml

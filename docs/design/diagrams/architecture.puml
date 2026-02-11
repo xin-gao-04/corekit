@@ -1,0 +1,31 @@
+@startuml
+skinparam monochrome true
+
+package "Application" {
+  [User App]
+}
+
+package "liblogkit API" {
+  interface ILogManager
+  interface IChannel
+  [Status/Result]
+  [Factory C API]
+}
+
+package "Backend" {
+  [LogManagerAdapter]
+  [SharedMemoryChannel]
+  [glog Backend]
+  [Win32 Shared Memory]
+}
+
+[User App] --> [Factory C API]
+[User App] --> ILogManager
+[User App] --> IChannel
+ILogManager --> [Status/Result]
+IChannel --> [Status/Result]
+[Factory C API] --> [LogManagerAdapter]
+[Factory C API] --> [SharedMemoryChannel]
+[LogManagerAdapter] --> [glog Backend]
+[SharedMemoryChannel] --> [Win32 Shared Memory]
+@enduml
