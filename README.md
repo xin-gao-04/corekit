@@ -1,4 +1,4 @@
-# sim_toolkit
+# corekit
 
 A dedicated C++ utility toolkit for simulation systems, delivered as a dynamic library plus interface headers.
 

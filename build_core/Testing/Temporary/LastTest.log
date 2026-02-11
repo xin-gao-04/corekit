@@ -1,0 +1,45 @@
+Start testing: Feb 11 16:57 ?D1迆㊣那℅?那㊣??
+----------------------------------------------------------
+1/2 Testing: logkit_tests
+1/2 Test: logkit_tests
+Command: "D:/code/corekit/build_core/Release/logkit_tests.exe"
+Directory: D:/code/corekit/build_core
+"logkit_tests" start time: Feb 11 16:57 ?D1迆㊣那℅?那㊣??
+Output:
+----------------------------------------------------------
+hello-json
+error-json
+[PASS] reload_before_init
+[PASS] json_async_sink
+[PASS] reload_invalid_keep_options
+<end of output>
+Test time =   1.11 sec
+----------------------------------------------------------
+Test Passed.
+"logkit_tests" end time: Feb 11 16:57 ?D1迆㊣那℅?那㊣??
+"logkit_tests" time elapsed: 00:00:01
+----------------------------------------------------------
+
+2/2 Testing: interface_tests
+2/2 Test: interface_tests
+Command: "D:/code/corekit/build_core/Release/interface_tests.exe"
+Directory: D:/code/corekit/build_core
+"interface_tests" start time: Feb 11 16:57 ?D1迆㊣那℅?那㊣??
+Output:
+----------------------------------------------------------
+[PASS] api_version
+[PASS] factory_lifecycle
+[PASS] allocator_basic
+[PASS] executor_submit_wait
+[PASS] executor_parallel_for
+[PASS] task_graph_dependency
+[PASS] ipc_roundtrip
+<end of output>
+Test time =   0.21 sec
+----------------------------------------------------------
+Test Passed.
+"interface_tests" end time: Feb 11 16:57 ?D1迆㊣那℅?那㊣??
+"interface_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Feb 11 16:57 ?D1迆㊣那℅?那㊣??

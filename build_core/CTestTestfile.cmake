@@ -1,0 +1,36 @@
+# CMake generated Testfile for 
+# Source directory: D:/code/corekit
+# Build directory: D:/code/corekit/build_core
+# 
+# This file includes the relevant testing commands required for 
+# testing this directory and lists subdirectories to be tested as well.
+if("${CTEST_CONFIGURATION_TYPE}" MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
+  add_test(logkit_tests "D:/code/corekit/build_core/Debug/logkit_tests.exe")
+  set_tests_properties(logkit_tests PROPERTIES  _BACKTRACE_TRIPLES "D:/code/corekit/CMakeLists.txt;142;add_test;D:/code/corekit/CMakeLists.txt;0;")
+elseif("${CTEST_CONFIGURATION_TYPE}" MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+  add_test(logkit_tests "D:/code/corekit/build_core/Release/logkit_tests.exe")
+  set_tests_properties(logkit_tests PROPERTIES  _BACKTRACE_TRIPLES "D:/code/corekit/CMakeLists.txt;142;add_test;D:/code/corekit/CMakeLists.txt;0;")
+elseif("${CTEST_CONFIGURATION_TYPE}" MATCHES "^([Mm][Ii][Nn][Ss][Ii][Zz][Ee][Rr][Ee][Ll])$")
+  add_test(logkit_tests "D:/code/corekit/build_core/MinSizeRel/logkit_tests.exe")
+  set_tests_properties(logkit_tests PROPERTIES  _BACKTRACE_TRIPLES "D:/code/corekit/CMakeLists.txt;142;add_test;D:/code/corekit/CMakeLists.txt;0;")
+elseif("${CTEST_CONFIGURATION_TYPE}" MATCHES "^([Rr][Ee][Ll][Ww][Ii][Tt][Hh][Dd][Ee][Bb][Ii][Nn][Ff][Oo])$")
+  add_test(logkit_tests "D:/code/corekit/build_core/RelWithDebInfo/logkit_tests.exe")
+  set_tests_properties(logkit_tests PROPERTIES  _BACKTRACE_TRIPLES "D:/code/corekit/CMakeLists.txt;142;add_test;D:/code/corekit/CMakeLists.txt;0;")
+else()
+  add_test(logkit_tests NOT_AVAILABLE)
+endif()
+if("${CTEST_CONFIGURATION_TYPE}" MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
+  add_test(interface_tests "D:/code/corekit/build_core/Debug/interface_tests.exe")
+  set_tests_properties(interface_tests PROPERTIES  _BACKTRACE_TRIPLES "D:/code/corekit/CMakeLists.txt;146;add_test;D:/code/corekit/CMakeLists.txt;0;")
+elseif("${CTEST_CONFIGURATION_TYPE}" MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+  add_test(interface_tests "D:/code/corekit/build_core/Release/interface_tests.exe")
+  set_tests_properties(interface_tests PROPERTIES  _BACKTRACE_TRIPLES "D:/code/corekit/CMakeLists.txt;146;add_test;D:/code/corekit/CMakeLists.txt;0;")
+elseif("${CTEST_CONFIGURATION_TYPE}" MATCHES "^([Mm][Ii][Nn][Ss][Ii][Zz][Ee][Rr][Ee][Ll])$")
+  add_test(interface_tests "D:/code/corekit/build_core/MinSizeRel/interface_tests.exe")
+  set_tests_properties(interface_tests PROPERTIES  _BACKTRACE_TRIPLES "D:/code/corekit/CMakeLists.txt;146;add_test;D:/code/corekit/CMakeLists.txt;0;")
+elseif("${CTEST_CONFIGURATION_TYPE}" MATCHES "^([Rr][Ee][Ll][Ww][Ii][Tt][Hh][Dd][Ee][Bb][Ii][Nn][Ff][Oo])$")
+  add_test(interface_tests "D:/code/corekit/build_core/RelWithDebInfo/interface_tests.exe")
+  set_tests_properties(interface_tests PROPERTIES  _BACKTRACE_TRIPLES "D:/code/corekit/CMakeLists.txt;146;add_test;D:/code/corekit/CMakeLists.txt;0;")
+else()
+  add_test(interface_tests NOT_AVAILABLE)
+endif()
