@@ -27,15 +27,34 @@ class IConcurrentMap {
   // 返回：kOk 表示写入成功。
   virtual api::Status Upsert(const K& key, const V& value) = 0;
 
+  // 仅当 key 不存在时插入。
+  // 返回：
+  // - kOk：插入成功。
+  // - kWouldBlock：key 已存在（未覆盖旧值）。
+  virtual api::Status InsertIfAbsent(const K& key, const V& value) = 0;
+
   // 查询键值。
   // 返回：
   // - kOk：value 为查询结果。
   // - kNotFound：不存在该 key。
   virtual api::Result<V> Find(const K& key) const = 0;
 
+  // 查询键值并写入 out，减少不必要的临时对象拷贝。
+  // 返回：
+  // - kOk：查询成功并写入 *out。
+  // - kNotFound：不存在该 key。
+  // - kInvalidArgument：out 为 nullptr。
+  virtual api::Status TryGet(const K& key, V* out) const = 0;
+
+  // 返回 key 是否存在。
+  virtual bool Contains(const K& key) const = 0;
+
   // 删除键。
   // 返回：kOk 表示删除成功；kNotFound 表示键不存在。
   virtual api::Status Erase(const K& key) = 0;
+
+  // 清空映射。
+  virtual api::Status Clear() = 0;
 
   // 返回近似元素个数。
   virtual std::size_t ApproxSize() const = 0;

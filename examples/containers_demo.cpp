@@ -12,6 +12,15 @@ int main() {
     std::printf("queue: %d, %d\n", a.value(), b.value());
   }
 
+  corekit::concurrent::MoodycamelQueue<int> mq(32);
+  mq.TryPush(100);
+  mq.TryPush(200);
+  corekit::api::Result<int> mqa = mq.TryPop();
+  corekit::api::Result<int> mqb = mq.TryPop();
+  if (mqa.ok() && mqb.ok()) {
+    std::printf("moodycamel queue: %d, %d\n", mqa.value(), mqb.value());
+  }
+
   corekit::concurrent::BasicConcurrentMap<int, const char*> m;
   m.Upsert(1, "alpha");
   corekit::api::Result<const char*> r = m.Find(1);

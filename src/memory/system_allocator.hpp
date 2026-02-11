@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include "corekit/memory/iallocator.hpp"
 
 namespace corekit {
@@ -19,7 +21,7 @@ class SystemAllocator : public IAllocator {
   api::Status Deallocate(void* ptr) override;
 
  private:
-  AllocBackend backend_;
+  std::atomic<int> backend_;
 };
 
 }  // namespace memory

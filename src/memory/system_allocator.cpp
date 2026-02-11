@@ -16,7 +16,7 @@ bool IsPowerOfTwo(std::size_t x) { return x != 0 && (x & (x - 1)) == 0; }
 
 }  // namespace
 
-SystemAllocator::SystemAllocator() : backend_(AllocBackend::kSystem) {}
+SystemAllocator::SystemAllocator() : backend_(static_cast<int>(AllocBackend::kSystem)) {}
 SystemAllocator::~SystemAllocator() {}
 
 const char* SystemAllocator::Name() const { return "corekit.memory.system_allocator"; }
@@ -28,12 +28,13 @@ api::Status SystemAllocator::SetBackend(AllocBackend backend) {
     return api::Status(api::StatusCode::kUnsupported,
                        "Only kSystem backend is implemented in current stage");
   }
-  backend_ = backend;
+  backend_.store(static_cast<int>(backend), std::memory_order_release);
   return api::Status::Ok();
 }
 
 api::Result<void*> SystemAllocator::Allocate(std::size_t size, std::size_t alignment) {
-  if (backend_ != AllocBackend::kSystem) {
+  if (static_cast<AllocBackend>(backend_.load(std::memory_order_acquire)) !=
+      AllocBackend::kSystem) {
     return api::Result<void*>(api::Status(api::StatusCode::kUnsupported,
                                           "Selected backend is not implemented"));
   }

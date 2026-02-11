@@ -7,6 +7,7 @@
 #include "corekit/concurrent/basic_queue.hpp"
 #include "corekit/concurrent/i_map.hpp"
 #include "corekit/concurrent/i_queue.hpp"
+#include "corekit/concurrent/moodycamel_queue.hpp"
 #include "corekit/ipc/i_channel.hpp"
 #include "corekit/log/ilog_manager.hpp"
 #include "corekit/log/log_types.hpp"

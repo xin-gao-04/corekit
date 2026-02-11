@@ -30,6 +30,10 @@ class IQueue {
   // 线程安全：由具体实现定义；默认按并发队列语义设计。
   virtual api::Status TryPush(const T& value) = 0;
 
+  // 非阻塞移动入队，避免不必要的拷贝。
+  // 返回语义与 TryPush(const T&) 一致。
+  virtual api::Status TryPushMove(T&& value) = 0;
+
   // 非阻塞出队。
   // 返回：
   // - kOk：value 为出队元素。
@@ -40,6 +44,15 @@ class IQueue {
   // 返回队列近似长度。
   // 说明：并发场景下仅用于监控和调优，不保证瞬时强一致。
   virtual std::size_t ApproxSize() const = 0;
+
+  // 返回当前是否为空（近似语义，适合快速分支判断）。
+  virtual bool IsEmpty() const = 0;
+
+  // 清空队列中的当前元素。
+  virtual api::Status Clear() = 0;
+
+  // 返回容量上限。0 表示“无固定上限/由实现决定”。
+  virtual std::size_t Capacity() const = 0;
 };
 
 }  // namespace concurrent

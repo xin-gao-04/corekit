@@ -2,8 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <mutex>
+#include <unordered_set>
 #include <vector>
 
 #include "corekit/memory/i_object_pool.hpp"
@@ -36,7 +36,9 @@ class BasicObjectPool : public IObjectPool<T> {
         return api::Status(api::StatusCode::kInternalError, "reserve allocation failed");
       }
       all_.push_back(obj);
+      all_set_.insert(obj);
       free_.push_back(obj);
+      free_set_.insert(obj);
     }
     return api::Status::Ok();
   }
@@ -46,6 +48,7 @@ class BasicObjectPool : public IObjectPool<T> {
     if (!free_.empty()) {
       T* obj = free_.back();
       free_.pop_back();
+      free_set_.erase(obj);
       return api::Result<T*>(obj);
     }
 
@@ -55,6 +58,7 @@ class BasicObjectPool : public IObjectPool<T> {
           api::Status(api::StatusCode::kInternalError, "acquire allocation failed"));
     }
     all_.push_back(obj);
+    all_set_.insert(obj);
     return api::Result<T*>(obj);
   }
 
@@ -64,10 +68,17 @@ class BasicObjectPool : public IObjectPool<T> {
     }
 
     std::lock_guard<std::mutex> lock(mu_);
+    if (all_set_.find(obj) == all_set_.end()) {
+      return api::Status(api::StatusCode::kInvalidArgument, "object does not belong to this pool");
+    }
+    if (free_set_.find(obj) != free_set_.end()) {
+      return api::Status(api::StatusCode::kInvalidArgument, "object already released");
+    }
     if (free_.size() >= max_cached_) {
-      return api::Status::Ok();
+      return api::Status(api::StatusCode::kWouldBlock, "pool free cache is full");
     }
     free_.push_back(obj);
+    free_set_.insert(obj);
     return api::Status::Ok();
   }
 
@@ -81,6 +92,8 @@ class BasicObjectPool : public IObjectPool<T> {
   mutable std::mutex mu_;
   std::vector<T*> all_;
   std::vector<T*> free_;
+  std::unordered_set<T*> all_set_;
+  std::unordered_set<T*> free_set_;
 };
 
 }  // namespace memory

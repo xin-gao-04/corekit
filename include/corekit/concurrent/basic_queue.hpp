@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <utility>
 #include <mutex>
 #include <string>
 
@@ -30,6 +31,15 @@ class BasicMutexQueue : public IQueue<T> {
     return api::Status::Ok();
   }
 
+  virtual api::Status TryPushMove(T&& value) {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (capacity_ > 0 && queue_.size() >= capacity_) {
+      return api::Status(api::StatusCode::kWouldBlock, "queue is full");
+    }
+    queue_.push_back(std::move(value));
+    return api::Status::Ok();
+  }
+
   virtual api::Result<T> TryPop() {
     std::lock_guard<std::mutex> lock(mu_);
     if (queue_.empty()) {
@@ -44,6 +54,19 @@ class BasicMutexQueue : public IQueue<T> {
     std::lock_guard<std::mutex> lock(mu_);
     return queue_.size();
   }
+
+  virtual bool IsEmpty() const {
+    std::lock_guard<std::mutex> lock(mu_);
+    return queue_.empty();
+  }
+
+  virtual api::Status Clear() {
+    std::lock_guard<std::mutex> lock(mu_);
+    queue_.clear();
+    return api::Status::Ok();
+  }
+
+  virtual std::size_t Capacity() const { return capacity_; }
 
  private:
   std::size_t capacity_;

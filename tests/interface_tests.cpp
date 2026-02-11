@@ -163,19 +163,30 @@ bool TestIpcRoundTripInProcess() {
 
 bool TestBasicConcurrentQueue() {
   corekit::concurrent::BasicMutexQueue<int> q(4);
+  if (q.Capacity() != 4) return false;
+  if (!q.IsEmpty()) return false;
   if (!q.TryPush(1).ok()) return false;
   if (!q.TryPush(2).ok()) return false;
+  if (q.IsEmpty()) return false;
   corekit::api::Result<int> a = q.TryPop();
   corekit::api::Result<int> b = q.TryPop();
   if (!a.ok() || !b.ok()) return false;
   if (a.value() != 1 || b.value() != 2) return false;
   corekit::api::Result<int> c = q.TryPop();
   if (c.ok()) return false;
-  return c.status().code() == corekit::api::StatusCode::kWouldBlock;
+  if (c.status().code() != corekit::api::StatusCode::kWouldBlock) return false;
+  if (!q.TryPushMove(3).ok()) return false;
+  if (!q.Clear().ok()) return false;
+  return q.IsEmpty();
 }
 
 bool TestBasicConcurrentMap() {
   corekit::concurrent::BasicConcurrentMap<int, int> m;
+  if (!m.InsertIfAbsent(7, 70).ok()) return false;
+  if (m.InsertIfAbsent(7, 99).code() != corekit::api::StatusCode::kWouldBlock) return false;
+  if (!m.Contains(7)) return false;
+  int out = 0;
+  if (!m.TryGet(7, &out).ok() || out != 70) return false;
   if (!m.Upsert(7, 70).ok()) return false;
   corekit::api::Result<int> got = m.Find(7);
   if (!got.ok() || got.value() != 70) return false;
@@ -183,6 +194,8 @@ bool TestBasicConcurrentMap() {
   got = m.Find(7);
   if (!got.ok() || got.value() != 71) return false;
   if (!m.Erase(7).ok()) return false;
+  if (m.Contains(7)) return false;
+  if (!m.Clear().ok()) return false;
   got = m.Find(7);
   if (got.ok()) return false;
   return got.status().code() == corekit::api::StatusCode::kNotFound;
@@ -204,8 +217,28 @@ bool TestBasicObjectPool() {
   a.value()->value = 123;
   b.value()->value = 456;
   if (!pool.ReleaseObject(a.value()).ok()) return false;
+  if (pool.ReleaseObject(a.value()).code() != corekit::api::StatusCode::kInvalidArgument) {
+    return false;
+  }
+  DummyPooled external;
+  if (pool.ReleaseObject(&external).code() != corekit::api::StatusCode::kInvalidArgument) {
+    return false;
+  }
   if (!pool.ReleaseObject(b.value()).ok()) return false;
   return pool.Available() >= 2;
+}
+
+bool TestMoodycamelQueue() {
+  corekit::concurrent::MoodycamelQueue<int> q(64);
+  if (!q.TryPush(11).ok()) return false;
+  if (!q.TryPush(22).ok()) return false;
+  corekit::api::Result<int> a = q.TryPop();
+  corekit::api::Result<int> b = q.TryPop();
+  if (!a.ok() || !b.ok()) return false;
+  if (a.value() != 11 || b.value() != 22) return false;
+  corekit::api::Result<int> c = q.TryPop();
+  if (c.ok()) return false;
+  return c.status().code() == corekit::api::StatusCode::kWouldBlock;
 }
 
 int main() {
@@ -225,6 +258,7 @@ int main() {
       {"basic_queue", TestBasicConcurrentQueue},
       {"basic_map", TestBasicConcurrentMap},
       {"basic_object_pool", TestBasicObjectPool},
+      {"moodycamel_queue", TestMoodycamelQueue},
   };
 
   int failed = 0;
