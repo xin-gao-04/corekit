@@ -30,5 +30,3 @@ int main() {
   corekit_destroy_ipc_channel(ch);
   return 0;
 }
-
-

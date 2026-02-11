@@ -161,6 +161,53 @@ bool TestIpcRoundTripInProcess() {
   return true;
 }
 
+bool TestBasicConcurrentQueue() {
+  corekit::concurrent::BasicMutexQueue<int> q(4);
+  if (!q.TryPush(1).ok()) return false;
+  if (!q.TryPush(2).ok()) return false;
+  corekit::api::Result<int> a = q.TryPop();
+  corekit::api::Result<int> b = q.TryPop();
+  if (!a.ok() || !b.ok()) return false;
+  if (a.value() != 1 || b.value() != 2) return false;
+  corekit::api::Result<int> c = q.TryPop();
+  if (c.ok()) return false;
+  return c.status().code() == corekit::api::StatusCode::kWouldBlock;
+}
+
+bool TestBasicConcurrentMap() {
+  corekit::concurrent::BasicConcurrentMap<int, int> m;
+  if (!m.Upsert(7, 70).ok()) return false;
+  corekit::api::Result<int> got = m.Find(7);
+  if (!got.ok() || got.value() != 70) return false;
+  if (!m.Upsert(7, 71).ok()) return false;
+  got = m.Find(7);
+  if (!got.ok() || got.value() != 71) return false;
+  if (!m.Erase(7).ok()) return false;
+  got = m.Find(7);
+  if (got.ok()) return false;
+  return got.status().code() == corekit::api::StatusCode::kNotFound;
+}
+
+struct DummyPooled {
+  int value;
+  DummyPooled() : value(0) {}
+};
+
+bool TestBasicObjectPool() {
+  corekit::memory::BasicObjectPool<DummyPooled> pool(16);
+  if (!pool.Reserve(2).ok()) return false;
+  if (pool.Available() < 2) return false;
+
+  corekit::api::Result<DummyPooled*> a = pool.Acquire();
+  corekit::api::Result<DummyPooled*> b = pool.Acquire();
+  if (!a.ok() || !b.ok()) return false;
+  a.value()->value = 123;
+  b.value()->value = 456;
+  if (!pool.ReleaseObject(a.value()).ok()) return false;
+  if (!pool.ReleaseObject(b.value()).ok()) return false;
+  return pool.Available() >= 2;
+}
+
 int main() {
   struct TestCase {
     const char* name;
@@ -175,6 +222,9 @@ int main() {
       {"executor_parallel_for", TestExecutorParallelFor},
       {"task_graph_dependency", TestTaskGraphDependency},
       {"ipc_roundtrip", TestIpcRoundTripInProcess},
+      {"basic_queue", TestBasicConcurrentQueue},
+      {"basic_map", TestBasicConcurrentMap},
+      {"basic_object_pool", TestBasicObjectPool},
   };
 
   int failed = 0;

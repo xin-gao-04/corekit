@@ -10,19 +10,21 @@ namespace corekit {
 namespace ipc {
 
 struct ChannelOptions {
-  std::string name;
-  std::uint32_t capacity = 1024;
-  std::uint32_t message_max_bytes = 4096;
-  bool drop_when_full = true;
-  std::uint32_t timeout_ms = 0;
+  // 定义ChannelOptions结构体的成员变量
+  std::string name;         // 通道唯一名，建议业务自定义前缀
+  std::uint32_t capacity = 1024;   // 环形队列槽位数，必须 > 0
+  std::uint32_t message_max_bytes = 4096;   // 消息最大字节数
+  bool drop_when_full = true;    // 当缓冲区满时是否丢弃消息
+  std::uint32_t timeout_ms = 0;     // 等待超时时间（毫秒）
 };
 
 struct ChannelStats {
-  std::uint64_t send_ok = 0;
-  std::uint64_t recv_ok = 0;
-  std::uint64_t dropped_when_full = 0;
-  std::uint64_t would_block_send = 0;
-  std::uint64_t would_block_recv = 0;
+  // 定义ChannelStats结构体的成员变量
+  std::uint64_t send_ok = 0;    // 发送成功次数
+  std::uint64_t recv_ok = 0;    // 接收成功次数
+  std::uint64_t dropped_when_full = 0;   // 当缓冲区满时丢弃消息次数
+  std::uint64_t would_block_send = 0;   // 发送时会阻塞的次数
+  std::uint64_t would_block_recv = 0;   // 接收时会阻塞的次数
 };
 
 class IChannel {

@@ -29,5 +29,3 @@ int main(int argc, char* argv[]) {
   corekit_destroy_log_manager(logger);
   return 0;
 }
-
-

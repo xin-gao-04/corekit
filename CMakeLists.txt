@@ -95,6 +95,9 @@ if (COREKIT_BUILD_EXAMPLES)
   add_executable(corekit_example examples/main.cpp)
   target_link_libraries(corekit_example PRIVATE corekit)
 
+  add_executable(containers_demo examples/containers_demo.cpp)
+  target_link_libraries(containers_demo PRIVATE corekit)
+
   add_executable(ipc_server_example examples/ipc_server.cpp)
   target_link_libraries(ipc_server_example PRIVATE corekit)
 
