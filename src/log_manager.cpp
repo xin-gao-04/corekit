@@ -1,4 +1,4 @@
-#include "logkit/log_manager.hpp"
+#include "corekit/legacy/log_manager_legacy.hpp"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -30,7 +30,7 @@
 #include <sstream>
 #include <thread>
 
-namespace logkit {
+namespace corekit_legacy {
 namespace {
 
 std::mutex& GlobalMutex() {
@@ -530,7 +530,7 @@ class FormattedSink : public google::LogSink {
     if (dropped_count_ > 0) {
       std::lock_guard<std::mutex> lock(stream_mu_);
       stream_ << "{\"ts\":\"" << TimestampPrefix()
-              << "\",\"level\":\"W\",\"message\":\"logkit dropped "
+              << "\",\"level\":\"W\",\"message\":\"corekit dropped "
               << dropped_count_ << " messages because async queue was full\"}\n";
       stream_.flush();
     }
@@ -568,7 +568,7 @@ bool LogManager::Init(const std::string& app_name, const std::string& config_pat
     FLAGS_alsologtostderr = false;
   }
   const std::string sanitized_app_name =
-      BaseName(app_name).empty() ? "logkit" : BaseName(app_name);
+      BaseName(app_name).empty() ? "corekit" : BaseName(app_name);
   google::InitGoogleLogging(sanitized_app_name.c_str());
 
   if (!ApplyOptions(options)) ok = false;
@@ -714,4 +714,7 @@ LoggingOptions LogManager::LoadFromFile(const std::string& path, bool* ok) {
   return ParseConfig(input, ok);
 }
 
-}  // namespace logkit
+}  // namespace corekit_legacy
+
+
+

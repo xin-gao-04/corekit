@@ -8,9 +8,9 @@
 #include <thread>
 #include <vector>
 
-#include "liblogkit/task/iexecutor.hpp"
+#include "corekit/task/iexecutor.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace task {
 
 class ThreadPoolExecutor : public IExecutor {
@@ -42,4 +42,5 @@ class ThreadPoolExecutor : public IExecutor {
 };
 
 }  // namespace task
-}  // namespace liblogkit
+}  // namespace corekit
+

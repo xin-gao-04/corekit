@@ -1,8 +1,8 @@
 #pragma once
 
-#include "liblogkit/log/ilog_manager.hpp"
+#include "corekit/log/ilog_manager.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace log {
 
 class LogManagerAdapter : public ILogManager {
@@ -22,4 +22,5 @@ class LogManagerAdapter : public ILogManager {
 };
 
 }  // namespace log
-}  // namespace liblogkit
+}  // namespace corekit
+

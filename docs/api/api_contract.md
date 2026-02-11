@@ -1,7 +1,7 @@
 # API Contract
 
 ## Versioning
-- Runtime API version: `liblogkit_get_api_version()`
+- Runtime API version: `corekit_get_api_version()`
 - All C++ interfaces expose `ApiVersion()`.
 
 ## Lifetime
@@ -57,3 +57,5 @@
 - Do not remove existing virtual methods.
 - Additive changes require version bump.
 - ABI changes require major version increment.
+
+

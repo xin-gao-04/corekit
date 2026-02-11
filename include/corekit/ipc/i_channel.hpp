@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <string>
 
-#include "liblogkit/api/status.hpp"
+#include "corekit/api/status.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace ipc {
 
 struct ChannelOptions {
@@ -88,4 +88,5 @@ class IChannel {
 };
 
 }  // namespace ipc
-}  // namespace liblogkit
+}  // namespace corekit
+

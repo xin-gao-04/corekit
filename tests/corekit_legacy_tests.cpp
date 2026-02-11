@@ -1,4 +1,4 @@
-#include "logkit/log_manager.hpp"
+#include "corekit/legacy/log_manager_legacy.hpp"
 
 #include <chrono>
 #include <cstdlib>
@@ -121,7 +121,7 @@ std::string TempDirectory() {
 
 std::string UniqueTestDir(const std::string& name) {
   const auto now = std::chrono::steady_clock::now().time_since_epoch().count();
-  return JoinPath(TempDirectory(), "logkit_" + name + "_" + std::to_string(now));
+  return JoinPath(TempDirectory(), "corekit_" + name + "_" + std::to_string(now));
 }
 
 bool WriteTextFile(const std::string& path, const std::string& content) {
@@ -139,7 +139,7 @@ std::string ReadTextFile(const std::string& path) {
   return ss.str();
 }
 
-bool TestReloadBeforeInitFails() { return !logkit::LogManager::Reload("not_used.conf"); }
+bool TestReloadBeforeInitFails() { return !corekit_legacy::LogManager::Reload("not_used.conf"); }
 
 bool TestJsonAsyncSinkWritesFile() {
   const std::string root = UniqueTestDir("json_async");
@@ -154,14 +154,14 @@ bool TestJsonAsyncSinkWritesFile() {
       "bootstrap_stderr = true\n" + "logtostderr = false\n" + "alsologtostderr = false\n";
   if (!WriteTextFile(cfg, config)) return false;
 
-  if (!logkit::LogManager::Init("logkit_tests", cfg)) return false;
-  const auto opts = logkit::LogManager::CurrentOptions();
+  if (!corekit_legacy::LogManager::Init("corekit_legacy_tests", cfg)) return false;
+  const auto opts = corekit_legacy::LogManager::CurrentOptions();
   if (!opts.json_format || !opts.async_sink || opts.async_queue_size != 256) return false;
 
-  logkit::LogManager::Log(logkit::LogSeverity::kInfo, "hello-json");
-  logkit::LogManager::Log(logkit::LogSeverity::kError, "error-json");
+  corekit_legacy::LogManager::Log(corekit_legacy::LogSeverity::kInfo, "hello-json");
+  corekit_legacy::LogManager::Log(corekit_legacy::LogSeverity::kError, "error-json");
   std::this_thread::sleep_for(std::chrono::milliseconds(250));
-  logkit::LogManager::Shutdown();
+  corekit_legacy::LogManager::Shutdown();
 
   const std::string log_file = JoinPath(logs_dir, "app.jsonl");
   const std::string body = ReadTextFile(log_file);
@@ -186,11 +186,11 @@ bool TestReloadInvalidConfigKeepsOptions() {
   const std::string bad = "v = not_a_number\n";
   if (!WriteTextFile(good_cfg, good) || !WriteTextFile(bad_cfg, bad)) return false;
 
-  if (!logkit::LogManager::Init("logkit_tests", good_cfg)) return false;
-  const auto before = logkit::LogManager::CurrentOptions();
-  const bool reload_ok = logkit::LogManager::Reload(bad_cfg);
-  const auto after = logkit::LogManager::CurrentOptions();
-  logkit::LogManager::Shutdown();
+  if (!corekit_legacy::LogManager::Init("corekit_legacy_tests", good_cfg)) return false;
+  const auto before = corekit_legacy::LogManager::CurrentOptions();
+  const bool reload_ok = corekit_legacy::LogManager::Reload(bad_cfg);
+  const auto after = corekit_legacy::LogManager::CurrentOptions();
+  corekit_legacy::LogManager::Shutdown();
 
   RemoveTree(root);
   if (reload_ok) return false;
@@ -217,3 +217,5 @@ int main() {
   }
   return failed == 0 ? 0 : 1;
 }
+
+

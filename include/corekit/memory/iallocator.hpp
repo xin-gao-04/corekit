@@ -3,10 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "liblogkit/api/status.hpp"
-#include "liblogkit/api/version.hpp"
+#include "corekit/api/status.hpp"
+#include "corekit/api/version.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace memory {
 
 enum class AllocBackend { kSystem = 0, kTbbScalable = 1, kMimalloc = 2 };
@@ -57,4 +57,5 @@ class IAllocator {
 };
 
 }  // namespace memory
-}  // namespace liblogkit
+}  // namespace corekit
+

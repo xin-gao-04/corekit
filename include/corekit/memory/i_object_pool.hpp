@@ -3,10 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "liblogkit/api/status.hpp"
-#include "liblogkit/api/version.hpp"
+#include "corekit/api/status.hpp"
+#include "corekit/api/version.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace memory {
 
 template <typename T>
@@ -49,4 +49,5 @@ class IObjectPool {
 };
 
 }  // namespace memory
-}  // namespace liblogkit
+}  // namespace corekit
+

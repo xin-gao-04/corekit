@@ -3,10 +3,10 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "liblogkit/api/status.hpp"
-#include "liblogkit/api/version.hpp"
+#include "corekit/api/status.hpp"
+#include "corekit/api/version.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace concurrent {
 
 template <typename T>
@@ -43,4 +43,5 @@ class IQueue {
 };
 
 }  // namespace concurrent
-}  // namespace liblogkit
+}  // namespace corekit
+

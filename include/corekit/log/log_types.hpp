@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace liblogkit {
+namespace corekit {
 namespace log {
 
 enum class LogSeverity { kInfo = 0, kWarning = 1, kError = 2, kFatal = 3 };
@@ -32,4 +32,5 @@ struct LoggingOptions {
 };
 
 }  // namespace log
-}  // namespace liblogkit
+}  // namespace corekit
+

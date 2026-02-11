@@ -2,7 +2,7 @@
 
 #include <string>
 
-namespace liblogkit {
+namespace corekit {
 namespace api {
 
 enum class StatusCode {
@@ -52,4 +52,5 @@ class Result {
 };
 
 }  // namespace api
-}  // namespace liblogkit
+}  // namespace corekit
+

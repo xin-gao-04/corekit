@@ -5,9 +5,9 @@
 #include <set>
 #include <vector>
 
-#include "liblogkit/task/i_task_graph.hpp"
+#include "corekit/task/i_task_graph.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace task {
 
 class SimpleTaskGraph : public ITaskGraph {
@@ -38,4 +38,5 @@ class SimpleTaskGraph : public ITaskGraph {
 };
 
 }  // namespace task
-}  // namespace liblogkit
+}  // namespace corekit
+

@@ -2,15 +2,15 @@
 
 #include <queue>
 
-#include "liblogkit/api/version.hpp"
+#include "corekit/api/version.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace task {
 
 SimpleTaskGraph::SimpleTaskGraph() : next_id_(1) {}
 SimpleTaskGraph::~SimpleTaskGraph() {}
 
-const char* SimpleTaskGraph::Name() const { return "liblogkit.task.simple_task_graph"; }
+const char* SimpleTaskGraph::Name() const { return "corekit.task.simple_task_graph"; }
 std::uint32_t SimpleTaskGraph::ApiVersion() const { return api::kApiVersion; }
 void SimpleTaskGraph::Release() { delete this; }
 
@@ -124,4 +124,6 @@ api::Status SimpleTaskGraph::Run() {
 }
 
 }  // namespace task
-}  // namespace liblogkit
+}  // namespace corekit
+
+

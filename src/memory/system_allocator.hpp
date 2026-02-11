@@ -1,8 +1,8 @@
 #pragma once
 
-#include "liblogkit/memory/iallocator.hpp"
+#include "corekit/memory/iallocator.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace memory {
 
 class SystemAllocator : public IAllocator {
@@ -23,4 +23,5 @@ class SystemAllocator : public IAllocator {
 };
 
 }  // namespace memory
-}  // namespace liblogkit
+}  // namespace corekit
+

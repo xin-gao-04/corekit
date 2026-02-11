@@ -3,7 +3,7 @@
 A dedicated C++ utility toolkit for simulation systems, delivered as a dynamic library plus interface headers.
 
 ## What is implemented in this stage
-- Interface-first API (`pure virtual` classes) under `include/liblogkit`.
+- Interface-first API (`pure virtual` classes) under `include/corekit`.
 - DLL factory boundary (`extern "C"`) for ABI-stable object creation.
 - Logging interface adapter over existing `glog`-based backend.
 - IPC v1 interface and Windows shared-memory ring-buffer implementation.
@@ -22,15 +22,15 @@ ctest --test-dir build -C Release
 
 ## Quick usage (interface style)
 ```cpp
-#include "liblogkit/liblogkit.hpp"
+#include "corekit/corekit.hpp"
 
-liblogkit::log::ILogManager* logger = liblogkit_create_log_manager();
+corekit::log::ILogManager* logger = corekit_create_log_manager();
 auto st = logger->Init("my_app", "config/logging.conf");
 if (st.ok()) {
-  logger->Log(liblogkit::log::LogSeverity::kInfo, "hello");
+  logger->Log(corekit::log::LogSeverity::kInfo, "hello");
   logger->Shutdown();
 }
-liblogkit_destroy_log_manager(logger);
+corekit_destroy_log_manager(logger);
 ```
 
 ## IPC usage (v1)
@@ -39,12 +39,15 @@ liblogkit_destroy_log_manager(logger);
 - Data path uses `TrySend` / `TryRecv` (non-blocking).
 
 ## Public headers
-- `include/liblogkit/liblogkit.hpp`
-- `include/liblogkit/log/ilog_manager.hpp`
-- `include/liblogkit/ipc/i_channel.hpp`
-- `include/liblogkit/api/factory.hpp`
+- `include/corekit/corekit.hpp`
+- `include/corekit/log/ilog_manager.hpp`
+- `include/corekit/ipc/i_channel.hpp`
+- `include/corekit/api/factory.hpp`
 
 ## Notes
 - Current IPC backend implementation is Windows-first (`CreateFileMapping` based).
 - API comments are attached directly to virtual methods, focused on usability.
-- Legacy `include/logkit/log_manager.hpp` is kept for compatibility.
+- Legacy `include/corekit/legacy/log_manager_legacy.hpp` is kept for compatibility.
+
+
+

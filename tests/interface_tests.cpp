@@ -1,4 +1,4 @@
-#include "liblogkit/liblogkit.hpp"
+#include "corekit/corekit.hpp"
 
 #include <atomic>
 #include <cstring>
@@ -7,46 +7,46 @@
 #include <vector>
 
 bool TestApiVersion() {
-  return liblogkit_get_api_version() == liblogkit::api::kApiVersion;
+  return corekit_get_api_version() == corekit::api::kApiVersion;
 }
 
 bool TestFactoryLifecycle() {
-  liblogkit::log::ILogManager* logger = liblogkit_create_log_manager();
+  corekit::log::ILogManager* logger = corekit_create_log_manager();
   if (logger == NULL) return false;
-  if (logger->ApiVersion() != liblogkit::api::kApiVersion) return false;
-  liblogkit_destroy_log_manager(logger);
+  if (logger->ApiVersion() != corekit::api::kApiVersion) return false;
+  corekit_destroy_log_manager(logger);
 
-  liblogkit::ipc::IChannel* ch = liblogkit_create_ipc_channel();
+  corekit::ipc::IChannel* ch = corekit_create_ipc_channel();
   if (ch == NULL) return false;
-  if (ch->ApiVersion() != liblogkit::api::kApiVersion) return false;
-  liblogkit_destroy_ipc_channel(ch);
+  if (ch->ApiVersion() != corekit::api::kApiVersion) return false;
+  corekit_destroy_ipc_channel(ch);
 
-  liblogkit::memory::IAllocator* allocator = liblogkit_create_allocator();
+  corekit::memory::IAllocator* allocator = corekit_create_allocator();
   if (allocator == NULL) return false;
-  if (allocator->ApiVersion() != liblogkit::api::kApiVersion) return false;
-  liblogkit_destroy_allocator(allocator);
+  if (allocator->ApiVersion() != corekit::api::kApiVersion) return false;
+  corekit_destroy_allocator(allocator);
 
-  liblogkit::task::IExecutor* executor = liblogkit_create_executor();
+  corekit::task::IExecutor* executor = corekit_create_executor();
   if (executor == NULL) return false;
-  if (executor->ApiVersion() != liblogkit::api::kApiVersion) return false;
-  liblogkit_destroy_executor(executor);
+  if (executor->ApiVersion() != corekit::api::kApiVersion) return false;
+  corekit_destroy_executor(executor);
 
-  liblogkit::task::ITaskGraph* graph = liblogkit_create_task_graph();
+  corekit::task::ITaskGraph* graph = corekit_create_task_graph();
   if (graph == NULL) return false;
-  if (graph->ApiVersion() != liblogkit::api::kApiVersion) return false;
-  liblogkit_destroy_task_graph(graph);
+  if (graph->ApiVersion() != corekit::api::kApiVersion) return false;
+  corekit_destroy_task_graph(graph);
   return true;
 }
 
 bool TestAllocatorBasic() {
-  liblogkit::memory::IAllocator* allocator = liblogkit_create_allocator();
+  corekit::memory::IAllocator* allocator = corekit_create_allocator();
   if (allocator == NULL) return false;
-  liblogkit::api::Result<void*> alloc = allocator->Allocate(64, 16);
+  corekit::api::Result<void*> alloc = allocator->Allocate(64, 16);
   if (!alloc.ok() || alloc.value() == NULL) return false;
   unsigned char* p = static_cast<unsigned char*>(alloc.value());
   for (int i = 0; i < 64; ++i) p[i] = static_cast<unsigned char>(i);
-  liblogkit::api::Status st_alloc = allocator->Deallocate(alloc.value());
-  liblogkit_destroy_allocator(allocator);
+  corekit::api::Status st_alloc = allocator->Deallocate(alloc.value());
+  corekit_destroy_allocator(allocator);
   if (!st_alloc.ok()) return false;
 
   return true;
@@ -58,15 +58,15 @@ void IncCounterTask(void* user_data) {
 }
 
 bool TestExecutorSubmitAndWait() {
-  liblogkit::task::IExecutor* executor = liblogkit_create_executor();
+  corekit::task::IExecutor* executor = corekit_create_executor();
   if (executor == NULL) return false;
   std::atomic<int> counter(0);
   for (int i = 0; i < 100; ++i) {
-    liblogkit::api::Status st = executor->Submit(&IncCounterTask, &counter);
+    corekit::api::Status st = executor->Submit(&IncCounterTask, &counter);
     if (!st.ok()) return false;
   }
-  liblogkit::api::Status st_exec = executor->WaitAll();
-  liblogkit_destroy_executor(executor);
+  corekit::api::Status st_exec = executor->WaitAll();
+  corekit_destroy_executor(executor);
   if (!st_exec.ok()) return false;
   return counter.load(std::memory_order_relaxed) == 100;
 }
@@ -77,12 +77,12 @@ void AddIndexTask(std::size_t index, void* user_data) {
 }
 
 bool TestExecutorParallelFor() {
-  liblogkit::task::IExecutor* executor = liblogkit_create_executor();
+  corekit::task::IExecutor* executor = corekit_create_executor();
   if (executor == NULL) return false;
   std::atomic<long long> sum(0);
-  liblogkit::api::Status st =
+  corekit::api::Status st =
       executor->ParallelFor(1, 101, 8, &AddIndexTask, &sum);
-  liblogkit_destroy_executor(executor);
+  corekit_destroy_executor(executor);
   if (!st.ok()) return false;
   return sum.load(std::memory_order_relaxed) == 5050;
 }
@@ -113,30 +113,30 @@ void TaskC(void* user_data) {
 }
 
 bool TestTaskGraphDependency() {
-  liblogkit::task::ITaskGraph* graph = liblogkit_create_task_graph();
+  corekit::task::ITaskGraph* graph = corekit_create_task_graph();
   if (graph == NULL) return false;
   std::atomic<int> stage(0);
   std::atomic<int> errors(0);
   GraphCheckCtx ctx = {&stage, &errors};
 
-  liblogkit::api::Result<std::uint64_t> a = graph->AddTask(&TaskA, &ctx);
-  liblogkit::api::Result<std::uint64_t> b = graph->AddTask(&TaskB, &ctx);
-  liblogkit::api::Result<std::uint64_t> c = graph->AddTask(&TaskC, &ctx);
+  corekit::api::Result<std::uint64_t> a = graph->AddTask(&TaskA, &ctx);
+  corekit::api::Result<std::uint64_t> b = graph->AddTask(&TaskB, &ctx);
+  corekit::api::Result<std::uint64_t> c = graph->AddTask(&TaskC, &ctx);
   if (!a.ok() || !b.ok() || !c.ok()) return false;
   if (!graph->AddDependency(a.value(), b.value()).ok()) return false;
   if (!graph->AddDependency(b.value(), c.value()).ok()) return false;
   if (!graph->Run().ok()) return false;
-  liblogkit_destroy_task_graph(graph);
+  corekit_destroy_task_graph(graph);
   if (errors.load(std::memory_order_relaxed) != 0) return false;
   return true;
 }
 
 bool TestIpcRoundTripInProcess() {
-  liblogkit::ipc::IChannel* server = liblogkit_create_ipc_channel();
-  liblogkit::ipc::IChannel* client = liblogkit_create_ipc_channel();
+  corekit::ipc::IChannel* server = corekit_create_ipc_channel();
+  corekit::ipc::IChannel* client = corekit_create_ipc_channel();
   if (server == NULL || client == NULL) return false;
 
-  liblogkit::ipc::ChannelOptions opt;
+  corekit::ipc::ChannelOptions opt;
   opt.name = "ut_ipc_roundtrip";
   opt.capacity = 16;
   opt.message_max_bytes = 128;
@@ -150,14 +150,14 @@ bool TestIpcRoundTripInProcess() {
   }
 
   char buf[128] = {0};
-  liblogkit::api::Result<std::uint32_t> recv = client->TryRecv(buf, sizeof(buf));
+  corekit::api::Result<std::uint32_t> recv = client->TryRecv(buf, sizeof(buf));
   if (!recv.ok()) return false;
   if (std::strcmp(buf, text) != 0) return false;
 
   server->Close();
   client->Close();
-  liblogkit_destroy_ipc_channel(server);
-  liblogkit_destroy_ipc_channel(client);
+  corekit_destroy_ipc_channel(server);
+  corekit_destroy_ipc_channel(client);
   return true;
 }
 
@@ -186,3 +186,5 @@ int main() {
 
   return failed == 0 ? 0 : 1;
 }
+
+

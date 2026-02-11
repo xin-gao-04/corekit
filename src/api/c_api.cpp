@@ -1,7 +1,7 @@
-#include "liblogkit/api/factory.hpp"
+#include "corekit/api/factory.hpp"
 
 #include "ipc/shared_memory_channel.hpp"
-#include "liblogkit/api/version.hpp"
+#include "corekit/api/version.hpp"
 #include "memory/system_allocator.hpp"
 #include "log/log_manager_adapter.hpp"
 #include "task/simple_task_graph.hpp"
@@ -9,40 +9,41 @@
 
 extern "C" {
 
-std::uint32_t liblogkit_get_api_version() { return liblogkit::api::kApiVersion; }
+std::uint32_t corekit_get_api_version() { return corekit::api::kApiVersion; }
 
-liblogkit::log::ILogManager* liblogkit_create_log_manager() {
-  return new liblogkit::log::LogManagerAdapter();
+corekit::log::ILogManager* corekit_create_log_manager() {
+  return new corekit::log::LogManagerAdapter();
 }
 
-void liblogkit_destroy_log_manager(liblogkit::log::ILogManager* manager) {
+void corekit_destroy_log_manager(corekit::log::ILogManager* manager) {
   delete manager;
 }
 
-liblogkit::ipc::IChannel* liblogkit_create_ipc_channel() {
-  return new liblogkit::ipc::SharedMemoryChannel();
+corekit::ipc::IChannel* corekit_create_ipc_channel() {
+  return new corekit::ipc::SharedMemoryChannel();
 }
 
-void liblogkit_destroy_ipc_channel(liblogkit::ipc::IChannel* channel) { delete channel; }
+void corekit_destroy_ipc_channel(corekit::ipc::IChannel* channel) { delete channel; }
 
-liblogkit::memory::IAllocator* liblogkit_create_allocator() {
-  return new liblogkit::memory::SystemAllocator();
+corekit::memory::IAllocator* corekit_create_allocator() {
+  return new corekit::memory::SystemAllocator();
 }
 
-void liblogkit_destroy_allocator(liblogkit::memory::IAllocator* allocator) {
+void corekit_destroy_allocator(corekit::memory::IAllocator* allocator) {
   delete allocator;
 }
 
-liblogkit::task::IExecutor* liblogkit_create_executor() {
-  return new liblogkit::task::ThreadPoolExecutor();
+corekit::task::IExecutor* corekit_create_executor() {
+  return new corekit::task::ThreadPoolExecutor();
 }
 
-void liblogkit_destroy_executor(liblogkit::task::IExecutor* executor) { delete executor; }
+void corekit_destroy_executor(corekit::task::IExecutor* executor) { delete executor; }
 
-liblogkit::task::ITaskGraph* liblogkit_create_task_graph() {
-  return new liblogkit::task::SimpleTaskGraph();
+corekit::task::ITaskGraph* corekit_create_task_graph() {
+  return new corekit::task::SimpleTaskGraph();
 }
 
-void liblogkit_destroy_task_graph(liblogkit::task::ITaskGraph* graph) { delete graph; }
+void corekit_destroy_task_graph(corekit::task::ITaskGraph* graph) { delete graph; }
 
 }
+

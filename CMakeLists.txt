@@ -13,17 +13,17 @@ if(NOT DEFINED BUILD_SHARED_LIBS)
   set(BUILD_SHARED_LIBS ON)
 endif()
 
-option(LOGKIT_FETCH_DEPS "Fetch glog if not found" ON)
-option(LOGKIT_BUNDLE_DEPS_STATIC
-       "Build glog from source as static lib and link it into shared logkit"
+option(COREKIT_FETCH_DEPS "Fetch glog if not found" ON)
+option(COREKIT_BUNDLE_DEPS_STATIC
+       "Build glog from source as static lib and link it into shared corekit"
        ON)
 option(COREKIT_BUILD_EXAMPLES "Build examples" ON)
 option(COREKIT_BUILD_TESTS "Build tests" ON)
 
-if (LOGKIT_BUNDLE_DEPS_STATIC)
+if (COREKIT_BUNDLE_DEPS_STATIC)
   if (NOT BUILD_SHARED_LIBS)
     message(FATAL_ERROR
-            "LOGKIT_BUNDLE_DEPS_STATIC=ON requires BUILD_SHARED_LIBS=ON for logkit")
+            "COREKIT_BUNDLE_DEPS_STATIC=ON requires BUILD_SHARED_LIBS=ON for corekit")
   endif()
   include(FetchContent)
   FetchContent_Declare(
@@ -32,19 +32,19 @@ if (LOGKIT_BUNDLE_DEPS_STATIC)
     GIT_TAG v0.6.0
   )
   set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
-  set(_logkit_prev_build_testing ${BUILD_TESTING})
+  set(_corekit_prev_build_testing ${BUILD_TESTING})
   set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-  set(_logkit_prev_build_shared_libs ${BUILD_SHARED_LIBS})
+  set(_corekit_prev_build_shared_libs ${BUILD_SHARED_LIBS})
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
   FetchContent_MakeAvailable(glog)
-  set(BUILD_SHARED_LIBS ${_logkit_prev_build_shared_libs} CACHE BOOL "" FORCE)
-  set(BUILD_TESTING ${_logkit_prev_build_testing} CACHE BOOL "" FORCE)
+  set(BUILD_SHARED_LIBS ${_corekit_prev_build_shared_libs} CACHE BOOL "" FORCE)
+  set(BUILD_TESTING ${_corekit_prev_build_testing} CACHE BOOL "" FORCE)
 else()
   find_package(glog QUIET)
 
   if (NOT glog_FOUND)
-    if (NOT LOGKIT_FETCH_DEPS)
-      message(FATAL_ERROR "glog not found and LOGKIT_FETCH_DEPS=OFF")
+    if (NOT COREKIT_FETCH_DEPS)
+      message(FATAL_ERROR "glog not found and COREKIT_FETCH_DEPS=OFF")
     endif()
     include(FetchContent)
     FetchContent_Declare(
@@ -53,10 +53,10 @@ else()
       GIT_TAG v0.6.0
     )
     set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
-    set(_logkit_prev_build_testing ${BUILD_TESTING})
+    set(_corekit_prev_build_testing ${BUILD_TESTING})
     set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(glog)
-    set(BUILD_TESTING ${_logkit_prev_build_testing} CACHE BOOL "" FORCE)
+    set(BUILD_TESTING ${_corekit_prev_build_testing} CACHE BOOL "" FORCE)
   endif()
 endif()
 
@@ -74,7 +74,7 @@ add_library(corekit
     src/api/c_api.cpp
 )
 if (WIN32 AND BUILD_SHARED_LIBS)
-  target_compile_definitions(corekit PRIVATE LOGKIT_BUILD_DLL)
+  target_compile_definitions(corekit PRIVATE COREKIT_BUILD_DLL)
 endif()
 target_include_directories(corekit
     PUBLIC
@@ -89,7 +89,7 @@ target_link_libraries(corekit
 )
 
 add_library(corekit::corekit ALIAS corekit)
-add_library(liblogkit::liblogkit ALIAS corekit)
+
 
 if (COREKIT_BUILD_EXAMPLES)
   add_executable(corekit_example examples/main.cpp)
@@ -137,9 +137,9 @@ install(FILES
 
 if (COREKIT_BUILD_TESTS)
   enable_testing()
-  add_executable(logkit_tests tests/logkit_tests.cpp)
-  target_link_libraries(logkit_tests PRIVATE corekit)
-  add_test(NAME logkit_tests COMMAND logkit_tests)
+  add_executable(corekit_legacy_tests tests/corekit_legacy_tests.cpp)
+  target_link_libraries(corekit_legacy_tests PRIVATE corekit)
+  add_test(NAME corekit_legacy_tests COMMAND corekit_legacy_tests)
 
   add_executable(interface_tests tests/interface_tests.cpp)
   target_link_libraries(interface_tests PRIVATE corekit)
@@ -149,4 +149,7 @@ endif()
 if (COREKIT_BUILD_EXAMPLES)
   configure_file(config/logging.conf ${CMAKE_CURRENT_BINARY_DIR}/config/logging.conf COPYONLY)
 endif()
+
+
+
 

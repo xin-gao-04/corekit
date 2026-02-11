@@ -3,18 +3,18 @@
 #include <string>
 
 #if defined(_WIN32)
-#if defined(LOGKIT_BUILD_DLL)
-#define LOGKIT_API __declspec(dllexport)
-#elif defined(LOGKIT_USE_DLL)
-#define LOGKIT_API __declspec(dllimport)
+#if defined(COREKIT_BUILD_DLL)
+#define COREKIT_API __declspec(dllexport)
+#elif defined(COREKIT_USE_DLL)
+#define COREKIT_API __declspec(dllimport)
 #else
-#define LOGKIT_API
+#define COREKIT_API
 #endif
 #else
-#define LOGKIT_API
+#define COREKIT_API
 #endif
 
-namespace logkit {
+namespace corekit_legacy {
 
 enum class LogSeverity { kInfo = 0, kWarning = 1, kError = 2, kFatal = 3 };
 
@@ -47,7 +47,7 @@ struct LoggingOptions {
   bool stop_logging_if_full_disk = false;
 };
 
-class LOGKIT_API LogManager {
+class COREKIT_API LogManager {
  public:
   // Initialize glog with an application name and optional config file.
   // Safe to call once at process startup.
@@ -71,4 +71,6 @@ class LOGKIT_API LogManager {
   static LoggingOptions LoadFromFile(const std::string& path, bool* ok);
 };
 
-}  // namespace logkit
+}  // namespace corekit_legacy
+
+

@@ -2,13 +2,13 @@
 
 #include <cstdlib>
 
-#include "liblogkit/api/version.hpp"
+#include "corekit/api/version.hpp"
 
 #if defined(_WIN32)
 #include <malloc.h>
 #endif
 
-namespace liblogkit {
+namespace corekit {
 namespace memory {
 namespace {
 
@@ -19,7 +19,7 @@ bool IsPowerOfTwo(std::size_t x) { return x != 0 && (x & (x - 1)) == 0; }
 SystemAllocator::SystemAllocator() : backend_(AllocBackend::kSystem) {}
 SystemAllocator::~SystemAllocator() {}
 
-const char* SystemAllocator::Name() const { return "liblogkit.memory.system_allocator"; }
+const char* SystemAllocator::Name() const { return "corekit.memory.system_allocator"; }
 std::uint32_t SystemAllocator::ApiVersion() const { return api::kApiVersion; }
 void SystemAllocator::Release() { delete this; }
 
@@ -75,4 +75,6 @@ api::Status SystemAllocator::Deallocate(void* ptr) {
 }
 
 }  // namespace memory
-}  // namespace liblogkit
+}  // namespace corekit
+
+

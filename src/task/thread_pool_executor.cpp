@@ -3,9 +3,9 @@
 #include <algorithm>
 #include <exception>
 
-#include "liblogkit/api/version.hpp"
+#include "corekit/api/version.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace task {
 
 ThreadPoolExecutor::ThreadPoolExecutor(std::size_t worker_count)
@@ -32,7 +32,7 @@ ThreadPoolExecutor::~ThreadPoolExecutor() {
   }
 }
 
-const char* ThreadPoolExecutor::Name() const { return "liblogkit.task.thread_pool_executor"; }
+const char* ThreadPoolExecutor::Name() const { return "corekit.task.thread_pool_executor"; }
 std::uint32_t ThreadPoolExecutor::ApiVersion() const { return api::kApiVersion; }
 void ThreadPoolExecutor::Release() { delete this; }
 
@@ -128,4 +128,6 @@ void ThreadPoolExecutor::WorkerLoop() {
 }
 
 }  // namespace task
-}  // namespace liblogkit
+}  // namespace corekit
+
+

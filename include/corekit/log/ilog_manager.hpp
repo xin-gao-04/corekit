@@ -2,11 +2,11 @@
 
 #include <string>
 
-#include "liblogkit/api/status.hpp"
-#include "liblogkit/api/version.hpp"
-#include "liblogkit/log/log_types.hpp"
+#include "corekit/api/status.hpp"
+#include "corekit/api/version.hpp"
+#include "corekit/log/log_types.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace log {
 
 class ILogManager {
@@ -60,4 +60,5 @@ class ILogManager {
 };
 
 }  // namespace log
-}  // namespace liblogkit
+}  // namespace corekit
+

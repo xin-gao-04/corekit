@@ -3,7 +3,7 @@
 #include <cstring>
 #include <sstream>
 
-#include "liblogkit/api/version.hpp"
+#include "corekit/api/version.hpp"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -12,7 +12,7 @@
 #include <windows.h>
 #endif
 
-namespace liblogkit {
+namespace corekit {
 namespace ipc {
 namespace {
 
@@ -20,7 +20,7 @@ static const std::uint32_t kChannelMagic = 0x4C4B4950;  // "LKIP"
 static const std::uint32_t kChannelVersion = 1;
 
 std::string BuildSharedName(const std::string& name) {
-  return std::string("Local\\liblogkit.") + name;
+  return std::string("Local\\corekit.") + name;
 }
 
 std::string ToString(std::uint32_t value) {
@@ -43,7 +43,7 @@ SharedMemoryChannel::SharedMemoryChannel()
 
 SharedMemoryChannel::~SharedMemoryChannel() { Close(); }
 
-const char* SharedMemoryChannel::Name() const { return "liblogkit.ipc.shm_ring_v1"; }
+const char* SharedMemoryChannel::Name() const { return "corekit.ipc.shm_ring_v1"; }
 
 std::uint32_t SharedMemoryChannel::ApiVersion() const { return api::kApiVersion; }
 
@@ -320,4 +320,6 @@ api::Status SharedMemoryChannel::MapAsClient(const ChannelOptions&) {
 }
 
 }  // namespace ipc
-}  // namespace liblogkit
+}  // namespace corekit
+
+

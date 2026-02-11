@@ -5,7 +5,7 @@ package "Application" {
   [User App]
 }
 
-package "liblogkit API" {
+package "corekit API" {
   interface ILogManager
   interface IChannel
   [Status/Result]
@@ -29,3 +29,4 @@ IChannel --> [Status/Result]
 [LogManagerAdapter] --> [glog Backend]
 [SharedMemoryChannel] --> [Win32 Shared Memory]
 @enduml
+

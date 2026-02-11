@@ -1,9 +1,9 @@
 # Architecture
 
 ## Overview
-`liblogkit` is split into interface headers and backend implementations.
+`corekit` is split into interface headers and backend implementations.
 
-- `include/liblogkit/...`: public API only.
+- `include/corekit/...`: public API only.
 - `src/...`: backend implementation details.
 - `src/api/c_api.cpp`: DLL factory export boundary.
 
@@ -21,3 +21,6 @@
 1. Freeze interfaces.
 2. Freeze design docs and diagrams.
 3. Implement and validate module by module.
+
+
+

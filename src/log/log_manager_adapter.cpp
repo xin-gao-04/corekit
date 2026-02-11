@@ -1,28 +1,28 @@
 #include "log/log_manager_adapter.hpp"
 
-#include "liblogkit/api/version.hpp"
-#include "logkit/log_manager.hpp"
+#include "corekit/api/version.hpp"
+#include "corekit/legacy/log_manager_legacy.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace log {
 namespace {
 
-logkit::LogSeverity ToLegacySeverity(LogSeverity severity) {
+corekit_legacy::LogSeverity ToLegacySeverity(LogSeverity severity) {
   switch (severity) {
     case LogSeverity::kInfo:
-      return logkit::LogSeverity::kInfo;
+      return corekit_legacy::LogSeverity::kInfo;
     case LogSeverity::kWarning:
-      return logkit::LogSeverity::kWarning;
+      return corekit_legacy::LogSeverity::kWarning;
     case LogSeverity::kError:
-      return logkit::LogSeverity::kError;
+      return corekit_legacy::LogSeverity::kError;
     case LogSeverity::kFatal:
-      return logkit::LogSeverity::kFatal;
+      return corekit_legacy::LogSeverity::kFatal;
     default:
-      return logkit::LogSeverity::kInfo;
+      return corekit_legacy::LogSeverity::kInfo;
   }
 }
 
-LoggingOptions FromLegacy(const logkit::LoggingOptions& src) {
+LoggingOptions FromLegacy(const corekit_legacy::LoggingOptions& src) {
   LoggingOptions out;
   out.log_dir = src.log_dir;
   out.session_subdir = src.session_subdir;
@@ -50,7 +50,7 @@ LoggingOptions FromLegacy(const logkit::LoggingOptions& src) {
 
 }  // namespace
 
-const char* LogManagerAdapter::Name() const { return "liblogkit.log.glog_adapter"; }
+const char* LogManagerAdapter::Name() const { return "corekit.log.glog_adapter"; }
 
 std::uint32_t LogManagerAdapter::ApiVersion() const { return api::kApiVersion; }
 
@@ -61,7 +61,7 @@ api::Status LogManagerAdapter::Init(const std::string& app_name,
   if (app_name.empty()) {
     return api::Status(api::StatusCode::kInvalidArgument, "app_name is empty");
   }
-  if (!logkit::LogManager::Init(app_name, config_path)) {
+  if (!corekit_legacy::LogManager::Init(app_name, config_path)) {
     return api::Status(api::StatusCode::kInternalError, "LogManager::Init failed");
   }
   return api::Status::Ok();
@@ -71,25 +71,28 @@ api::Status LogManagerAdapter::Reload(const std::string& config_path) {
   if (config_path.empty()) {
     return api::Status(api::StatusCode::kInvalidArgument, "config_path is empty");
   }
-  if (!logkit::LogManager::Reload(config_path)) {
+  if (!corekit_legacy::LogManager::Reload(config_path)) {
     return api::Status(api::StatusCode::kInternalError, "LogManager::Reload failed");
   }
   return api::Status::Ok();
 }
 
 api::Status LogManagerAdapter::Log(LogSeverity severity, const std::string& message) {
-  logkit::LogManager::Log(ToLegacySeverity(severity), message);
+  corekit_legacy::LogManager::Log(ToLegacySeverity(severity), message);
   return api::Status::Ok();
 }
 
 api::Result<LoggingOptions> LogManagerAdapter::CurrentOptions() const {
-  return api::Result<LoggingOptions>(FromLegacy(logkit::LogManager::CurrentOptions()));
+  return api::Result<LoggingOptions>(FromLegacy(corekit_legacy::LogManager::CurrentOptions()));
 }
 
 api::Status LogManagerAdapter::Shutdown() {
-  logkit::LogManager::Shutdown();
+  corekit_legacy::LogManager::Shutdown();
   return api::Status::Ok();
 }
 
 }  // namespace log
-}  // namespace liblogkit
+}  // namespace corekit
+
+
+

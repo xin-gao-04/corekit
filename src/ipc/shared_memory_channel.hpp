@@ -5,9 +5,9 @@
 #include <cstdint>
 #include <string>
 
-#include "liblogkit/ipc/i_channel.hpp"
+#include "corekit/ipc/i_channel.hpp"
 
-namespace liblogkit {
+namespace corekit {
 namespace ipc {
 
 class SharedMemoryChannel : public IChannel {
@@ -67,4 +67,5 @@ class SharedMemoryChannel : public IChannel {
 };
 
 }  // namespace ipc
-}  // namespace liblogkit
+}  // namespace corekit
+
