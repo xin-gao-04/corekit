@@ -3,10 +3,12 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <queue>
+#include <set>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -51,15 +53,23 @@ class ThreadPoolExecutor : public IExecutor {
     std::condition_variable cv;
   };
 
+  struct TaskEntry {
+    std::function<void()> fn;
+    TaskPriority priority = TaskPriority::kNormal;
+    std::uint64_t seq = 0;
+  };
+
   std::size_t NormalizeWorkerCount(std::size_t worker_count) const;
-  api::Status Enqueue(const std::function<void()>& fn);
+  api::Status Enqueue(const std::function<void()>& fn,
+                      const TaskSubmitOptions& options);
+  std::size_t PickNextTaskIndexLocked() const;
   TaskId NextTaskIdLocked();
   void MarkTaskDone(TaskId id, bool executed, bool failed);
   std::size_t QueueDepthLocked() const;
   void WorkerLoop();
 
   std::vector<std::thread> workers_;
-  std::queue<std::function<void()> > tasks_;
+  std::deque<TaskEntry> tasks_;
   mutable std::mutex mu_;
   std::condition_variable cv_;
   std::condition_variable idle_cv_;
@@ -67,9 +77,13 @@ class ThreadPoolExecutor : public IExecutor {
   std::size_t active_workers_;
   std::size_t pending_tasks_;
   TaskId next_task_id_;
+  std::uint64_t enqueue_seq_;
+  std::size_t max_retained_states_;
   ExecutorStats stats_;
   ExecutorOptions options_;
   std::unordered_map<TaskId, std::shared_ptr<TaskState> > states_;
+  std::set<TaskId> pending_ids_;
+  std::deque<TaskId> done_ids_;
   std::unordered_map<std::uint64_t, std::shared_ptr<std::mutex> > serial_key_mu_;
 };
 

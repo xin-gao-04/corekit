@@ -10,7 +10,12 @@ namespace corekit {
 namespace task {
 
 ThreadPoolExecutor::ThreadPoolExecutor(std::size_t worker_count)
-    : stopping_(false), active_workers_(0), pending_tasks_(0), next_task_id_(1) {
+    : stopping_(false),
+      active_workers_(0),
+      pending_tasks_(0),
+      next_task_id_(1),
+      enqueue_seq_(0),
+      max_retained_states_(65536) {
   options_.worker_count = NormalizeWorkerCount(worker_count);
   options_.policy = ExecutorPolicy::kHybridFairPriority;
   workers_.reserve(options_.worker_count);
@@ -47,7 +52,8 @@ std::size_t ThreadPoolExecutor::NormalizeWorkerCount(std::size_t worker_count) c
   return count == 0 ? 1 : count;
 }
 
-api::Status ThreadPoolExecutor::Enqueue(const std::function<void()>& fn) {
+api::Status ThreadPoolExecutor::Enqueue(const std::function<void()>& fn,
+                                        const TaskSubmitOptions& options) {
   {
     std::lock_guard<std::mutex> lock(mu_);
     if (stopping_) {
@@ -58,8 +64,13 @@ api::Status ThreadPoolExecutor::Enqueue(const std::function<void()>& fn) {
       ++stats_.rejected;
       return api::Status(api::StatusCode::kWouldBlock, "executor queue is full");
     }
-    tasks_.push(fn);
+    TaskEntry entry;
+    entry.fn = fn;
+    entry.priority = options.priority;
+    entry.seq = ++enqueue_seq_;
+    tasks_.push_back(entry);
     ++pending_tasks_;
+    ++stats_.submitted;
     stats_.queue_depth = QueueDepthLocked();
     if (stats_.queue_depth > stats_.queue_high_watermark) {
       stats_.queue_high_watermark = stats_.queue_depth;
@@ -69,15 +80,51 @@ api::Status ThreadPoolExecutor::Enqueue(const std::function<void()>& fn) {
   return api::Status::Ok();
 }
 
+std::size_t ThreadPoolExecutor::PickNextTaskIndexLocked() const {
+  if (tasks_.empty()) return 0;
+  if (options_.policy == ExecutorPolicy::kFifo || options_.policy == ExecutorPolicy::kFair) {
+    return 0;
+  }
+
+  // kPriority / kHybridFairPriority: select highest priority and keep FIFO within same priority.
+  std::size_t best = 0;
+  auto score = [](TaskPriority p) -> int {
+    if (p == TaskPriority::kHigh) return 2;
+    if (p == TaskPriority::kNormal) return 1;
+    return 0;
+  };
+  int best_score = score(tasks_[0].priority);
+  std::uint64_t best_seq = tasks_[0].seq;
+  for (std::size_t i = 1; i < tasks_.size(); ++i) {
+    const int s = score(tasks_[i].priority);
+    if (s > best_score || (s == best_score && tasks_[i].seq < best_seq)) {
+      best = i;
+      best_score = s;
+      best_seq = tasks_[i].seq;
+    }
+  }
+  return best;
+}
+
 api::Status ThreadPoolExecutor::Submit(void (*fn)(void*), void* user_data) {
   api::Result<TaskId> r = SubmitEx(fn, user_data, TaskSubmitOptions());
   return r.ok() ? api::Status::Ok() : r.status();
 }
 
 api::Result<TaskId> ThreadPoolExecutor::SubmitEx(void (*fn)(void*), void* user_data,
-                                                 const TaskSubmitOptions&) {
+                                                 const TaskSubmitOptions& options) {
   if (fn == NULL) {
     return api::Result<TaskId>(api::Status(api::StatusCode::kInvalidArgument, "fn is null"));
+  }
+
+  std::shared_ptr<std::mutex> key_mu;
+  if (options.serial_key != 0) {
+    std::lock_guard<std::mutex> lock(mu_);
+    key_mu = serial_key_mu_[options.serial_key];
+    if (!key_mu) {
+      key_mu.reset(new std::mutex());
+      serial_key_mu_[options.serial_key] = key_mu;
+    }
   }
 
   TaskId id = 0;
@@ -86,92 +133,50 @@ api::Result<TaskId> ThreadPoolExecutor::SubmitEx(void (*fn)(void*), void* user_d
     std::lock_guard<std::mutex> lock(mu_);
     id = NextTaskIdLocked();
     states_[id] = state;
+    pending_ids_.insert(id);
   }
 
-  api::Status st = Enqueue([this, id, fn, user_data, state]() {
+  api::Status st = Enqueue([this, id, fn, user_data, state, key_mu]() {
+    bool canceled = false;
     {
       std::lock_guard<std::mutex> lock(mu_);
       state->started = true;
+      canceled = state->canceled;
     }
-    if (state->canceled) {
+
+    if (canceled) {
       MarkTaskDone(id, false, false);
       return;
     }
+
     try {
-      fn(user_data);
+      if (key_mu) {
+        std::lock_guard<std::mutex> serial_lock(*key_mu);
+        fn(user_data);
+      } else {
+        fn(user_data);
+      }
       MarkTaskDone(id, true, false);
     } catch (...) {
       MarkTaskDone(id, false, true);
     }
-  });
+  }, options);
 
   if (!st.ok()) {
     std::lock_guard<std::mutex> lock(mu_);
     states_.erase(id);
+    pending_ids_.erase(id);
     return api::Result<TaskId>(st);
   }
 
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    ++stats_.submitted;
-  }
   return api::Result<TaskId>(id);
 }
 
 api::Result<TaskId> ThreadPoolExecutor::SubmitWithKey(std::uint64_t serial_key,
                                                       void (*fn)(void*), void* user_data) {
-  if (fn == NULL) {
-    return api::Result<TaskId>(api::Status(api::StatusCode::kInvalidArgument, "fn is null"));
-  }
-  if (serial_key == 0) return SubmitEx(fn, user_data, TaskSubmitOptions());
-
-  std::shared_ptr<std::mutex> key_mu;
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    key_mu = serial_key_mu_[serial_key];
-    if (!key_mu) {
-      key_mu.reset(new std::mutex());
-      serial_key_mu_[serial_key] = key_mu;
-    }
-  }
-
-  TaskId id = 0;
-  std::shared_ptr<TaskState> state(new TaskState());
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    id = NextTaskIdLocked();
-    states_[id] = state;
-  }
-
-  api::Status st = Enqueue([this, id, fn, user_data, key_mu, state]() {
-    {
-      std::lock_guard<std::mutex> lock(mu_);
-      state->started = true;
-    }
-    if (state->canceled) {
-      MarkTaskDone(id, false, false);
-      return;
-    }
-    try {
-      std::lock_guard<std::mutex> serial_lock(*key_mu);
-      fn(user_data);
-      MarkTaskDone(id, true, false);
-    } catch (...) {
-      MarkTaskDone(id, false, true);
-    }
-  });
-
-  if (!st.ok()) {
-    std::lock_guard<std::mutex> lock(mu_);
-    states_.erase(id);
-    return api::Result<TaskId>(st);
-  }
-
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    ++stats_.submitted;
-  }
-  return api::Result<TaskId>(id);
+  TaskSubmitOptions options;
+  options.serial_key = serial_key;
+  return SubmitEx(fn, user_data, options);
 }
 
 api::Status ThreadPoolExecutor::ParallelFor(std::size_t begin, std::size_t end, std::size_t grain,
@@ -181,14 +186,44 @@ api::Status ThreadPoolExecutor::ParallelFor(std::size_t begin, std::size_t end, 
   if (begin == end) return api::Status::Ok();
   if (grain == 0) grain = 1;
 
+  struct ParallelChunkCtx {
+    void (*fn)(std::size_t, void*);
+    void* user_data;
+    std::size_t begin;
+    std::size_t end;
+  };
+
+  auto run_chunk = [](void* p) {
+    ParallelChunkCtx* ctx = static_cast<ParallelChunkCtx*>(p);
+    if (ctx == NULL || ctx->fn == NULL) return;
+    for (std::size_t i = ctx->begin; i < ctx->end; ++i) {
+      ctx->fn(i, ctx->user_data);
+    }
+  };
+
+  std::vector<ParallelChunkCtx> chunks;
   for (std::size_t chunk_begin = begin; chunk_begin < end; chunk_begin += grain) {
     const std::size_t chunk_end = std::min(chunk_begin + grain, end);
-    api::Status st = Enqueue([fn, user_data, chunk_begin, chunk_end]() {
-      for (std::size_t i = chunk_begin; i < chunk_end; ++i) fn(i, user_data);
-    });
-    if (!st.ok()) return st;
+    ParallelChunkCtx c = {fn, user_data, chunk_begin, chunk_end};
+    chunks.push_back(c);
   }
-  return WaitAll();
+
+  std::vector<TaskId> ids;
+  ids.reserve(chunks.size());
+  for (std::size_t i = 0; i < chunks.size(); ++i) {
+    TaskSubmitOptions default_options;
+    default_options.priority = TaskPriority::kNormal;
+    api::Result<TaskId> sub = SubmitEx(run_chunk, &chunks[i], default_options);
+    if (!sub.ok()) {
+      if (!ids.empty()) {
+        (void)WaitBatch(&ids[0], ids.size(), 0);
+      }
+      return sub.status();
+    }
+    ids.push_back(sub.value());
+  }
+
+  return ids.empty() ? api::Status::Ok() : WaitBatch(&ids[0], ids.size(), 0);
 }
 
 api::Status ThreadPoolExecutor::Wait(TaskId id, std::uint32_t timeout_ms) {
@@ -250,11 +285,12 @@ api::Status ThreadPoolExecutor::WaitAllSubmittedBefore() {
     std::lock_guard<std::mutex> lock(mu_);
     snapshot = next_task_id_ == 0 ? 0 : (next_task_id_ - 1);
   }
-  for (TaskId id = 1; id <= snapshot; ++id) {
-    api::Status st = Wait(id, 0);
-    if (st.code() == api::StatusCode::kNotFound) continue;
-    if (!st.ok()) return st;
-  }
+
+  std::unique_lock<std::mutex> lock(mu_);
+  idle_cv_.wait(lock, [this, snapshot]() {
+    if (pending_ids_.empty()) return true;
+    return *pending_ids_.begin() > snapshot;
+  });
   return api::Status::Ok();
 }
 
@@ -291,8 +327,22 @@ void ThreadPoolExecutor::MarkTaskDone(TaskId id, bool executed, bool failed) {
   std::lock_guard<std::mutex> lock(mu_);
   typename std::unordered_map<TaskId, std::shared_ptr<TaskState> >::iterator it = states_.find(id);
   if (it == states_.end()) return;
+
   it->second->done = true;
   it->second->cv.notify_all();
+  pending_ids_.erase(id);
+
+  done_ids_.push_back(id);
+  while (done_ids_.size() > max_retained_states_) {
+    const TaskId old_id = done_ids_.front();
+    done_ids_.pop_front();
+    typename std::unordered_map<TaskId, std::shared_ptr<TaskState> >::iterator old =
+        states_.find(old_id);
+    if (old != states_.end() && old->second->done) {
+      states_.erase(old);
+    }
+  }
+
   if (it->second->canceled) return;
   if (failed) {
     ++stats_.failed;
@@ -310,8 +360,9 @@ void ThreadPoolExecutor::WorkerLoop() {
       std::unique_lock<std::mutex> lock(mu_);
       cv_.wait(lock, [this]() { return stopping_ || !tasks_.empty(); });
       if (stopping_ && tasks_.empty()) return;
-      task = tasks_.front();
-      tasks_.pop();
+      const std::size_t idx = PickNextTaskIndexLocked();
+      task = tasks_[idx].fn;
+      tasks_.erase(tasks_.begin() + static_cast<std::ptrdiff_t>(idx));
       ++active_workers_;
     }
 
@@ -327,7 +378,7 @@ void ThreadPoolExecutor::WorkerLoop() {
       --active_workers_;
       if (pending_tasks_ > 0) --pending_tasks_;
       stats_.queue_depth = QueueDepthLocked();
-      if (pending_tasks_ == 0 && active_workers_ == 0) idle_cv_.notify_all();
+      idle_cv_.notify_all();
     }
   }
 }

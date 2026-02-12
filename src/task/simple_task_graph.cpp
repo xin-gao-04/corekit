@@ -238,6 +238,9 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunWithExecutor(IExecutor* executor,
 
         api::Result<TaskId> sub = executor->SubmitEx(&RunGraphTask, &ctx[i], submit_options);
         if (!sub.ok()) {
+          if (!ids.empty()) {
+            (void)executor->WaitBatch(&ids[0], ids.size(), 0);
+          }
           return api::Result<GraphRunStats>(sub.status());
         }
         ids.push_back(sub.value());
@@ -245,6 +248,9 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunWithExecutor(IExecutor* executor,
 
       api::Status wait_st = executor->WaitBatch(ids.empty() ? NULL : &ids[0], ids.size(), 0);
       if (!wait_st.ok()) {
+        if (!ids.empty()) {
+          (void)executor->WaitBatch(&ids[0], ids.size(), 0);
+        }
         return api::Result<GraphRunStats>(wait_st);
       }
 

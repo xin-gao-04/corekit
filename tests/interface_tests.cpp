@@ -148,6 +148,120 @@ bool TestExecutorSubmitWithKeyAndCancel() {
   return max_running.load(std::memory_order_relaxed) <= 1;
 }
 
+bool TestExecutorSubmitExSerialKey() {
+  corekit::task::ExecutorOptions opt;
+  opt.worker_count = 4;
+  corekit::task::IExecutor* executor = corekit_create_executor_v2(&opt);
+  if (executor == NULL) return false;
+
+  std::atomic<int> running(0);
+  std::atomic<int> max_running(0);
+  std::atomic<int> executed(0);
+  SerialTaskCtx ctx = {&running, &max_running, &executed, 60};
+
+  corekit::task::TaskSubmitOptions aopt;
+  aopt.serial_key = 12345;
+  corekit::task::TaskSubmitOptions bopt;
+  bopt.serial_key = 12345;
+
+  corekit::api::Result<corekit::task::TaskId> a = executor->SubmitEx(&SerialTask, &ctx, aopt);
+  corekit::api::Result<corekit::task::TaskId> b = executor->SubmitEx(&SerialTask, &ctx, bopt);
+  if (!a.ok() || !b.ok()) return false;
+
+  corekit::task::TaskId ids[2] = {a.value(), b.value()};
+  if (!executor->WaitBatch(ids, 2, 0).ok()) return false;
+
+  corekit_destroy_executor(executor);
+  if (executed.load(std::memory_order_relaxed) != 2) return false;
+  return max_running.load(std::memory_order_relaxed) <= 1;
+}
+
+bool TestExecutorWaitAllSubmittedBefore() {
+  corekit::task::ExecutorOptions opt;
+  opt.worker_count = 4;
+  corekit::task::IExecutor* executor = corekit_create_executor_v2(&opt);
+  if (executor == NULL) return false;
+
+  std::atomic<int> done(0);
+  auto work = [](void* p) {
+    std::atomic<int>* d = static_cast<std::atomic<int>*>(p);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    d->fetch_add(1, std::memory_order_relaxed);
+  };
+
+  for (int i = 0; i < 20; ++i) {
+    if (!executor->Submit(work, &done).ok()) return false;
+  }
+
+  if (!executor->WaitAllSubmittedBefore().ok()) return false;
+  corekit::api::Result<corekit::task::ExecutorStats> stats = executor->QueryStats();
+  corekit_destroy_executor(executor);
+  if (!stats.ok()) return false;
+  return done.load(std::memory_order_relaxed) == 20 &&
+         stats.value().completed >= 20;
+}
+
+struct PriorityOrderCtx {
+  std::vector<int>* order;
+  std::mutex* order_mu;
+  int value;
+};
+
+void PriorityProbeTask(void* user_data) {
+  PriorityOrderCtx* ctx = static_cast<PriorityOrderCtx*>(user_data);
+  std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  std::lock_guard<std::mutex> lock(*ctx->order_mu);
+  ctx->order->push_back(ctx->value);
+}
+
+struct BlockerCtx {
+  std::atomic<bool>* release;
+};
+
+void BlockingTask(void* user_data) {
+  BlockerCtx* ctx = static_cast<BlockerCtx*>(user_data);
+  while (!ctx->release->load(std::memory_order_acquire)) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+}
+
+bool TestExecutorPriorityPolicy() {
+  corekit::task::ExecutorOptions opt;
+  opt.worker_count = 1;
+  opt.policy = corekit::task::ExecutorPolicy::kPriority;
+  corekit::task::IExecutor* executor = corekit_create_executor_v2(&opt);
+  if (executor == NULL) return false;
+
+  std::atomic<bool> release(false);
+  std::vector<int> order;
+  std::mutex order_mu;
+
+  BlockerCtx blocker_ctx = {&release};
+  PriorityOrderCtx low_ctx = {&order, &order_mu, 1};
+  PriorityOrderCtx high_ctx = {&order, &order_mu, 2};
+
+  if (!executor->Submit(&BlockingTask, &blocker_ctx).ok()) return false;
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  corekit::task::TaskSubmitOptions low_opt;
+  low_opt.priority = corekit::task::TaskPriority::kLow;
+  corekit::task::TaskSubmitOptions high_opt;
+  high_opt.priority = corekit::task::TaskPriority::kHigh;
+
+  corekit::api::Result<corekit::task::TaskId> low =
+      executor->SubmitEx(&PriorityProbeTask, &low_ctx, low_opt);
+  corekit::api::Result<corekit::task::TaskId> high =
+      executor->SubmitEx(&PriorityProbeTask, &high_ctx, high_opt);
+  if (!low.ok() || !high.ok()) return false;
+
+  release.store(true, std::memory_order_release);
+  if (!executor->WaitAll().ok()) return false;
+  corekit_destroy_executor(executor);
+
+  if (order.size() != 2) return false;
+  return order[0] == 2 && order[1] == 1;
+}
+
 struct GraphCheckCtx {
   std::atomic<int>* stage;
   std::atomic<int>* errors;
@@ -484,6 +598,9 @@ int main() {
       {"executor_submit_wait", TestExecutorSubmitAndWait},
       {"executor_parallel_for", TestExecutorParallelFor},
       {"executor_submit_with_key_and_cancel", TestExecutorSubmitWithKeyAndCancel},
+      {"executor_submit_ex_serial_key", TestExecutorSubmitExSerialKey},
+      {"executor_wait_all_submitted_before", TestExecutorWaitAllSubmittedBefore},
+      {"executor_priority_policy", TestExecutorPriorityPolicy},
       {"task_graph_dependency", TestTaskGraphDependency},
       {"task_graph_validate_and_run_with_executor", TestTaskGraphValidateAndRunWithExecutor},
       {"ipc_roundtrip", TestIpcRoundTripInProcess},

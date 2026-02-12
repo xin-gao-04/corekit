@@ -33,7 +33,7 @@ struct ExecutorOptions {
 
 struct TaskSubmitOptions {
   TaskPriority priority = TaskPriority::kNormal;
-  std::uint32_t tag = 0;
+  std::uint32_t tag = 0;       // Reserved for user-side classification/metrics.
   std::uint64_t serial_key = 0;  // 0 means no serial-group constraint.
 };
 
