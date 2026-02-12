@@ -1,6 +1,8 @@
 #include "corekit/corekit.hpp"
 #include "src/concurrent/basic_map_impl.hpp"
 #include "src/concurrent/basic_queue_impl.hpp"
+#include "src/concurrent/basic_ring_buffer_impl.hpp"
+#include "src/concurrent/basic_set_impl.hpp"
 #include "src/concurrent/moodycamel_queue_impl.hpp"
 #include "src/memory/basic_object_pool_impl.hpp"
 
@@ -309,6 +311,48 @@ bool TestBasicConcurrentMap() {
   return got.status().code() == corekit::api::StatusCode::kNotFound;
 }
 
+bool TestBasicConcurrentSet() {
+  corekit::concurrent::BasicConcurrentSet<int> s;
+  if (!s.Reserve(8).ok()) return false;
+  if (!s.Insert(10).ok()) return false;
+  if (!s.Insert(20).ok()) return false;
+  if (s.Insert(20).code() != corekit::api::StatusCode::kWouldBlock) return false;
+  if (!s.Contains(10) || !s.Contains(20)) return false;
+  std::vector<int> keys;
+  if (!s.Snapshot(&keys).ok()) return false;
+  if (keys.size() != 2) return false;
+  if (!s.Erase(10).ok()) return false;
+  if (s.Contains(10)) return false;
+  if (s.Erase(999).code() != corekit::api::StatusCode::kNotFound) return false;
+  if (!s.Clear().ok()) return false;
+  return s.ApproxSize() == 0;
+}
+
+bool TestBasicRingBuffer() {
+  corekit::concurrent::BasicRingBuffer<int> rb(3);
+  if (rb.Capacity() != 3) return false;
+  if (!rb.IsEmpty() || rb.IsFull()) return false;
+  if (!rb.TryPush(1).ok()) return false;
+  if (!rb.TryPush(2).ok()) return false;
+  if (!rb.TryPush(3).ok()) return false;
+  if (!rb.IsFull()) return false;
+  if (rb.TryPush(4).code() != corekit::api::StatusCode::kWouldBlock) return false;
+  int peek = 0;
+  if (!rb.TryPeek(&peek).ok() || peek != 1) return false;
+  corekit::api::Result<int> a = rb.TryPop();
+  corekit::api::Result<int> b = rb.TryPop();
+  if (!a.ok() || !b.ok()) return false;
+  if (a.value() != 1 || b.value() != 2) return false;
+  if (!rb.TryPush(4).ok()) return false;
+  corekit::api::Result<int> c = rb.TryPop();
+  corekit::api::Result<int> d = rb.TryPop();
+  if (!c.ok() || !d.ok()) return false;
+  if (c.value() != 3 || d.value() != 4) return false;
+  if (rb.TryPop().status().code() != corekit::api::StatusCode::kWouldBlock) return false;
+  if (!rb.Clear().ok()) return false;
+  return rb.IsEmpty() && rb.Size() == 0;
+}
+
 struct DummyPooled {
   int value;
   DummyPooled() : value(0) {}
@@ -445,6 +489,8 @@ int main() {
       {"ipc_roundtrip", TestIpcRoundTripInProcess},
       {"basic_queue", TestBasicConcurrentQueue},
       {"basic_map", TestBasicConcurrentMap},
+      {"basic_set", TestBasicConcurrentSet},
+      {"basic_ring_buffer", TestBasicRingBuffer},
       {"basic_object_pool", TestBasicObjectPool},
       {"moodycamel_queue", TestMoodycamelQueue},
       {"global_allocator_config_and_macros", TestGlobalAllocatorConfigAndMacros},

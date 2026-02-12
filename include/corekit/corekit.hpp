@@ -5,6 +5,8 @@
 #include "corekit/api/version.hpp"
 #include "corekit/concurrent/i_map.hpp"
 #include "corekit/concurrent/i_queue.hpp"
+#include "corekit/concurrent/i_ring_buffer.hpp"
+#include "corekit/concurrent/i_set.hpp"
 #include "corekit/ipc/i_channel.hpp"
 #include "corekit/json/i_json.hpp"
 #include "corekit/log/ilog_manager.hpp"

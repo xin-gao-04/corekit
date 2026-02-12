@@ -1,6 +1,8 @@
 #include "corekit/corekit.hpp"
 #include "src/concurrent/basic_map_impl.hpp"
 #include "src/concurrent/basic_queue_impl.hpp"
+#include "src/concurrent/basic_ring_buffer_impl.hpp"
+#include "src/concurrent/basic_set_impl.hpp"
 #include "src/concurrent/moodycamel_queue_impl.hpp"
 #include "src/memory/basic_object_pool_impl.hpp"
 
@@ -30,6 +32,19 @@ int main() {
   corekit::api::Result<const char*> r = m.Find(1);
   if (r.ok()) {
     std::printf("map: key=1 value=%s\n", r.value());
+  }
+
+  corekit::concurrent::BasicConcurrentSet<int> s;
+  s.Insert(7);
+  s.Insert(8);
+  std::printf("set contains 7: %s\n", s.Contains(7) ? "yes" : "no");
+
+  corekit::concurrent::BasicRingBuffer<int> rb(3);
+  rb.TryPush(9);
+  rb.TryPush(10);
+  corekit::api::Result<int> rbv = rb.TryPop();
+  if (rbv.ok()) {
+    std::printf("ring buffer pop: %d\n", rbv.value());
   }
 
   corekit::memory::BasicObjectPool<int> pool(4);

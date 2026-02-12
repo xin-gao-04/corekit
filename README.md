@@ -11,6 +11,12 @@ A dedicated C++ utility toolkit for engineering and simulation workloads, delive
 - Global allocator entry with macro-friendly usage (`COREKIT_ALLOC`, `COREKIT_FREE`, `COREKIT_NEW`, `COREKIT_DELETE`).
 - JSON codec wrapper (`corekit::json::JsonCodec`) and JSON memory policy config.
 - Internal container/pool implementations under `src/` using global allocator routing.
+  - `BasicMutexQueue<T>`
+  - `MoodycamelQueue<T>`
+  - `BasicConcurrentMap<K, V>`
+  - `BasicConcurrentSet<K>`
+  - `BasicRingBuffer<T>`
+  - `BasicObjectPool<T>`
 - Design docs and diagrams under `docs/`.
 - Third-party vendor entry folder: `3party/`.
 
@@ -67,6 +73,8 @@ Memory JSON schema:
 - `include/corekit/api/factory.hpp`
 - `include/corekit/concurrent/i_queue.hpp`
 - `include/corekit/concurrent/i_map.hpp`
+- `include/corekit/concurrent/i_set.hpp`
+- `include/corekit/concurrent/i_ring_buffer.hpp`
 - `include/corekit/memory/i_object_pool.hpp`
 - `include/corekit/memory/i_global_allocator.hpp`
 - `include/corekit/json/i_json.hpp`
