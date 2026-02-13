@@ -14,6 +14,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 bool TestApiVersion() {
@@ -585,6 +586,279 @@ bool TestGlobalAllocatorConfigAndMacros() {
   return true;
 }
 
+bool TestAllocatorInvalidArgsAndHexCode() {
+  corekit::memory::IAllocator* allocator = corekit_create_allocator();
+  if (allocator == NULL) return false;
+
+  corekit::api::Result<void*> zero = allocator->Allocate(0, alignof(std::max_align_t));
+  if (zero.ok()) return false;
+  if (zero.status().code() != corekit::api::StatusCode::kInvalidArgument) return false;
+  if (zero.status().hex_code() !=
+      corekit::api::MakeErrorCode(corekit::api::ErrorModule::kMemory,
+                                  corekit::api::StatusCode::kInvalidArgument, 0)) {
+    return false;
+  }
+
+  corekit::api::Result<void*> bad_align = allocator->Allocate(64, 3);
+  if (bad_align.ok()) return false;
+  if (bad_align.status().code() != corekit::api::StatusCode::kInvalidArgument) return false;
+
+  corekit_destroy_allocator(allocator);
+  return true;
+}
+
+bool TestBasicObjectPoolCapacityAndClearContract() {
+  corekit::memory::BasicObjectPool<DummyPooled> pool(2);
+  if (!pool.Reserve(2).ok()) return false;
+  if (pool.Available() != 2) return false;
+
+  corekit::api::Result<DummyPooled*> a = pool.Acquire();
+  corekit::api::Result<DummyPooled*> b = pool.Acquire();
+  corekit::api::Result<DummyPooled*> c = pool.Acquire();
+  if (!a.ok() || !b.ok() || !c.ok()) return false;
+  if (pool.Available() != 0) return false;
+  if (pool.TotalAllocated() < 3) return false;
+
+  if (!pool.ReleaseObject(a.value()).ok()) return false;
+  if (!pool.ReleaseObject(b.value()).ok()) return false;
+  if (!pool.ReleaseObject(c.value()).ok()) return false;
+
+  if (pool.Available() != 2) return false;
+  if (pool.TotalAllocated() != 2) return false;
+
+  corekit::api::Result<DummyPooled*> hold = pool.Acquire();
+  if (!hold.ok()) return false;
+  corekit::api::Status blocked = pool.Clear();
+  if (blocked.code() != corekit::api::StatusCode::kWouldBlock) return false;
+  if (!pool.ReleaseObject(hold.value()).ok()) return false;
+  if (!pool.Clear().ok()) return false;
+
+  return pool.Available() == 0 && pool.TotalAllocated() == 0;
+}
+
+bool TestBasicObjectPoolConcurrentAcquireRelease() {
+  corekit::memory::BasicObjectPool<DummyPooled> pool(256);
+  if (!pool.Reserve(32).ok()) return false;
+
+  std::atomic<int> failures(0);
+  const int thread_count = 8;
+  const int rounds = 1000;
+  std::vector<std::thread> workers;
+  workers.reserve(thread_count);
+
+  for (int t = 0; t < thread_count; ++t) {
+    workers.push_back(std::thread([&pool, &failures, t, rounds]() {
+      for (int i = 0; i < rounds; ++i) {
+        corekit::api::Result<DummyPooled*> obj = pool.Acquire();
+        if (!obj.ok() || obj.value() == NULL) {
+          failures.fetch_add(1, std::memory_order_relaxed);
+          continue;
+        }
+        obj.value()->value = t * rounds + i;
+        if (!pool.ReleaseObject(obj.value()).ok()) {
+          failures.fetch_add(1, std::memory_order_relaxed);
+        }
+      }
+    }));
+  }
+
+  for (std::size_t i = 0; i < workers.size(); ++i) {
+    workers[i].join();
+  }
+  if (failures.load(std::memory_order_relaxed) != 0) return false;
+
+  return pool.Clear().ok();
+}
+
+bool TestBasicObjectPoolErrorCodeModule() {
+  corekit::memory::BasicObjectPool<DummyPooled> pool(8);
+
+  corekit::api::Status invalid = pool.ReleaseObject(NULL);
+  if (invalid.code() != corekit::api::StatusCode::kInvalidArgument) return false;
+  if (invalid.hex_code() != corekit::api::MakeErrorCode(corekit::api::ErrorModule::kMemory,
+                                                         corekit::api::StatusCode::kInvalidArgument,
+                                                         0)) {
+    return false;
+  }
+
+  corekit::api::Result<DummyPooled*> hold = pool.Acquire();
+  if (!hold.ok() || hold.value() == NULL) return false;
+
+  corekit::api::Status blocked = pool.Clear();
+  if (blocked.code() != corekit::api::StatusCode::kWouldBlock) return false;
+  if (blocked.hex_code() != corekit::api::MakeErrorCode(corekit::api::ErrorModule::kMemory,
+                                                         corekit::api::StatusCode::kWouldBlock,
+                                                         0)) {
+    return false;
+  }
+
+  if (!pool.ReleaseObject(hold.value()).ok()) return false;
+  return pool.Clear().ok();
+}
+
+bool TestGlobalAllocatorConcurrentConfigureAndAllocate() {
+  std::atomic<int> failures(0);
+  const int thread_count = 6;
+  const int rounds = 400;
+  std::vector<std::thread> workers;
+  workers.reserve(thread_count);
+
+  for (int t = 0; t < thread_count; ++t) {
+    workers.push_back(std::thread([&failures, t, rounds]() {
+      for (int i = 0; i < rounds; ++i) {
+        corekit::memory::GlobalAllocatorOptions opt;
+        if (((i + t) % 2) == 0) {
+          opt.backend = corekit::memory::AllocBackend::kSystem;
+          opt.strict_backend = true;
+        } else {
+          opt.backend = corekit::memory::AllocBackend::kMimalloc;
+          opt.strict_backend = false;
+        }
+        corekit::api::Status cfg = corekit::memory::GlobalAllocator::Configure(opt);
+        if (!cfg.ok() && cfg.code() != corekit::api::StatusCode::kWouldBlock) {
+          failures.fetch_add(1, std::memory_order_relaxed);
+          continue;
+        }
+
+        corekit::api::Result<void*> mem =
+            corekit::memory::GlobalAllocator::Allocate(128, alignof(std::max_align_t));
+        if (!mem.ok() || mem.value() == NULL) {
+          failures.fetch_add(1, std::memory_order_relaxed);
+          continue;
+        }
+        if (!corekit::memory::GlobalAllocator::Deallocate(mem.value()).ok()) {
+          failures.fetch_add(1, std::memory_order_relaxed);
+        }
+      }
+    }));
+  }
+
+  for (std::size_t i = 0; i < workers.size(); ++i) {
+    workers[i].join();
+  }
+  if (failures.load(std::memory_order_relaxed) != 0) return false;
+
+  corekit::memory::GlobalAllocatorOptions reset;
+  reset.backend = corekit::memory::AllocBackend::kSystem;
+  reset.strict_backend = true;
+  return corekit::memory::GlobalAllocator::Configure(reset).ok();
+}
+
+bool TestGlobalStlAllocatorVectorGrowth() {
+  std::vector<int, corekit::memory::GlobalStlAllocator<int> > v;
+  for (int i = 0; i < 10000; ++i) {
+    v.push_back(i);
+  }
+  if (v.size() != 10000) return false;
+  if (v.front() != 0 || v.back() != 9999) return false;
+  return true;
+}
+
+bool TestGlobalAllocatorObservability() {
+  corekit::memory::GlobalAllocatorOptions opt;
+  opt.backend = corekit::memory::AllocBackend::kSystem;
+  opt.strict_backend = true;
+  if (!corekit::memory::GlobalAllocator::Configure(opt).ok()) return false;
+
+  const char* backend_name = corekit::memory::GlobalAllocator::CurrentBackendName();
+  if (backend_name == NULL) return false;
+  if (std::strcmp(backend_name, "system") != 0) return false;
+
+  corekit::memory::AllocatorCaps caps = corekit::memory::GlobalAllocator::CurrentCaps();
+  if (!caps.supports_aligned_alloc) return false;
+  if (!caps.thread_safe) return false;
+
+  corekit::memory::GlobalAllocator::ResetCurrentStats();
+  corekit::memory::AllocatorStats s0 = corekit::memory::GlobalAllocator::CurrentStats();
+  if (s0.alloc_count != 0 || s0.free_count != 0 || s0.alloc_fail_count != 0) return false;
+
+  corekit::api::Result<void*> ok =
+      corekit::memory::GlobalAllocator::Allocate(256, alignof(std::max_align_t));
+  if (!ok.ok() || ok.value() == NULL) return false;
+
+  corekit::memory::AllocatorStats s1 = corekit::memory::GlobalAllocator::CurrentStats();
+  if (s1.alloc_count < 1) return false;
+  if (s1.bytes_in_use < 256) return false;
+  if (s1.bytes_peak < s1.bytes_in_use) return false;
+
+  if (!corekit::memory::GlobalAllocator::Deallocate(ok.value()).ok()) return false;
+
+  corekit::memory::AllocatorStats s2 = corekit::memory::GlobalAllocator::CurrentStats();
+  if (s2.free_count < 1) return false;
+
+  corekit::api::Result<void*> bad =
+      corekit::memory::GlobalAllocator::Allocate(0, alignof(std::max_align_t));
+  if (bad.ok()) return false;
+  corekit::memory::AllocatorStats s3 = corekit::memory::GlobalAllocator::CurrentStats();
+  if (s3.alloc_fail_count < 1) return false;
+
+  return true;
+}
+bool TestGlobalAllocatorSwitchWhenInUse() {
+  corekit::memory::GlobalAllocatorOptions base;
+  base.backend = corekit::memory::AllocBackend::kSystem;
+  base.strict_backend = true;
+  if (!corekit::memory::GlobalAllocator::Configure(base).ok()) return false;
+
+  corekit::api::Result<void*> p =
+      corekit::memory::GlobalAllocator::Allocate(128, alignof(std::max_align_t));
+  if (!p.ok() || p.value() == NULL) return false;
+
+  corekit::memory::GlobalAllocatorOptions sw;
+  sw.backend = corekit::memory::AllocBackend::kMimalloc;
+  sw.strict_backend = false;
+
+  corekit::api::Status blocked = corekit::memory::GlobalAllocator::Configure(sw);
+  if (blocked.code() != corekit::api::StatusCode::kWouldBlock) return false;
+  if (blocked.hex_code() != corekit::api::MakeErrorCode(corekit::api::ErrorModule::kMemory,
+                                                         corekit::api::StatusCode::kWouldBlock,
+                                                         0)) {
+    return false;
+  }
+
+  if (!corekit::memory::GlobalAllocator::Deallocate(p.value()).ok()) return false;
+
+  corekit::api::Status after = corekit::memory::GlobalAllocator::Configure(sw);
+  if (!after.ok()) return false;
+  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kSystem) {
+    return false;
+  }
+  if (std::strcmp(corekit::memory::GlobalAllocator::CurrentBackendName(), "system") != 0) {
+    return false;
+  }
+
+  return true;
+}
+bool TestStatusHexCatalog() {
+  const corekit::api::Status st = corekit::api::Status::FromModule(
+      corekit::api::StatusCode::kInvalidArgument, "bad input",
+      corekit::api::ErrorModule::kTask, 0x0012);
+  if (st.code() != corekit::api::StatusCode::kInvalidArgument) return false;
+  if (st.hex_code() != corekit::api::MakeErrorCode(corekit::api::ErrorModule::kTask,
+                                                   corekit::api::StatusCode::kInvalidArgument,
+                                                   0x0012)) {
+    return false;
+  }
+  if (st.hex_code_string() != "0x50100012") return false;
+
+  const corekit::api::ErrorCatalogEntry* core_invalid =
+      corekit::api::FindErrorCatalogEntry(corekit::api::MakeErrorCode(
+          corekit::api::ErrorModule::kCore, corekit::api::StatusCode::kInvalidArgument, 0));
+  if (core_invalid == NULL) return false;
+  if (std::strcmp(core_invalid->symbol, "CORE_INVALID_ARGUMENT") != 0) return false;
+  if (std::strcmp(corekit::api::ErrorModuleName(corekit::api::ErrorModule::kTask), "task") != 0) {
+    return false;
+  }
+  if (std::strcmp(corekit::api::StatusCodeName(corekit::api::StatusCode::kWouldBlock),
+                  "kWouldBlock") != 0) {
+    return false;
+  }
+
+  const corekit::api::ErrorCatalogEntry* unknown =
+      corekit::api::FindErrorCatalogEntry(0xDEADBEEF);
+  if (unknown != NULL) return false;
+  return true;
+}
 int main() {
   struct TestCase {
     const char* name;
@@ -595,6 +869,7 @@ int main() {
       {"api_version", TestApiVersion},
       {"factory_lifecycle", TestFactoryLifecycle},
       {"allocator_basic", TestAllocatorBasic},
+      {"allocator_invalid_args_and_hex_code", TestAllocatorInvalidArgsAndHexCode},
       {"executor_submit_wait", TestExecutorSubmitAndWait},
       {"executor_parallel_for", TestExecutorParallelFor},
       {"executor_submit_with_key_and_cancel", TestExecutorSubmitWithKeyAndCancel},
@@ -609,8 +884,16 @@ int main() {
       {"basic_set", TestBasicConcurrentSet},
       {"basic_ring_buffer", TestBasicRingBuffer},
       {"basic_object_pool", TestBasicObjectPool},
+      {"basic_object_pool_capacity_and_clear_contract", TestBasicObjectPoolCapacityAndClearContract},
+      {"basic_object_pool_concurrent_acquire_release", TestBasicObjectPoolConcurrentAcquireRelease},
+      {"basic_object_pool_error_code_module", TestBasicObjectPoolErrorCodeModule},
       {"moodycamel_queue", TestMoodycamelQueue},
       {"global_allocator_config_and_macros", TestGlobalAllocatorConfigAndMacros},
+      {"global_allocator_concurrent_configure_and_allocate", TestGlobalAllocatorConcurrentConfigureAndAllocate},
+      {"global_stl_allocator_vector_growth", TestGlobalStlAllocatorVectorGrowth},
+      {"global_allocator_observability", TestGlobalAllocatorObservability},
+      {"global_allocator_switch_when_in_use", TestGlobalAllocatorSwitchWhenInUse},
+      {"status_hex_catalog", TestStatusHexCatalog},
   };
 
   int failed = 0;
@@ -625,3 +908,7 @@ int main() {
 
   return failed == 0 ? 0 : 1;
 }
+
+
+
+

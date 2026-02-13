@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <new>
+#include <type_traits>
 #include <vector>
 
 #include "corekit/api/version.hpp"
@@ -12,9 +14,14 @@
 namespace corekit {
 namespace concurrent {
 
+#define CK_STATUS(code, message) api::Status::FromModule((code), (message), api::ErrorModule::kConcurrent)
+
 template <typename T>
 class BasicRingBufferImpl : public IRingBuffer<T> {
  public:
+  static_assert(std::is_default_constructible<T>::value,
+                "BasicRingBufferImpl<T> requires T to be default-constructible");
+
   explicit BasicRingBufferImpl(std::size_t capacity)
       : capacity_(capacity),
         data_(capacity == 0 ? 1 : capacity),
@@ -31,9 +38,15 @@ class BasicRingBufferImpl : public IRingBuffer<T> {
   virtual api::Status TryPush(const T& value) {
     std::lock_guard<std::mutex> lock(mu_);
     if (capacity_ == 0 || size_ >= capacity_) {
-      return api::Status(api::StatusCode::kWouldBlock, "ring buffer is full");
+      return CK_STATUS(api::StatusCode::kWouldBlock, "ring buffer is full");
     }
-    data_[tail_] = value;
+    try {
+      data_[tail_] = value;
+    } catch (const std::bad_alloc&) {
+      return CK_STATUS(api::StatusCode::kInternalError, "ring buffer allocation failed");
+    } catch (...) {
+      return CK_STATUS(api::StatusCode::kInternalError, "ring buffer push failed");
+    }
     tail_ = (tail_ + 1) % capacity_;
     ++size_;
     return api::Status::Ok();
@@ -42,24 +55,33 @@ class BasicRingBufferImpl : public IRingBuffer<T> {
   virtual api::Result<T> TryPop() {
     std::lock_guard<std::mutex> lock(mu_);
     if (size_ == 0) {
-      return api::Result<T>(api::Status(api::StatusCode::kWouldBlock, "ring buffer is empty"));
+      return api::Result<T>(CK_STATUS(api::StatusCode::kWouldBlock, "ring buffer is empty"));
     }
-    T value = data_[head_];
-    head_ = (head_ + 1) % capacity_;
-    --size_;
-    return api::Result<T>(value);
+    try {
+      T value = std::move(data_[head_]);
+      head_ = (head_ + 1) % capacity_;
+      --size_;
+      return api::Result<T>(value);
+    } catch (...) {
+      return api::Result<T>(CK_STATUS(api::StatusCode::kInternalError,
+                                        "ring buffer pop failed"));
+    }
   }
 
   virtual api::Status TryPeek(T* out) const {
     if (out == NULL) {
-      return api::Status(api::StatusCode::kInvalidArgument, "out is null");
+      return CK_STATUS(api::StatusCode::kInvalidArgument, "out is null");
     }
     std::lock_guard<std::mutex> lock(mu_);
     if (size_ == 0) {
-      return api::Status(api::StatusCode::kWouldBlock, "ring buffer is empty");
+      return CK_STATUS(api::StatusCode::kWouldBlock, "ring buffer is empty");
     }
-    *out = data_[head_];
-    return api::Status::Ok();
+    try {
+      *out = data_[head_];
+      return api::Status::Ok();
+    } catch (...) {
+      return CK_STATUS(api::StatusCode::kInternalError, "ring buffer peek failed");
+    }
   }
 
   virtual api::Status Clear() {
@@ -102,5 +124,8 @@ class BasicRingBufferImpl : public IRingBuffer<T> {
 template <typename T>
 using BasicRingBuffer = BasicRingBufferImpl<T>;
 
+#undef CK_STATUS
+
 }  // namespace concurrent
 }  // namespace corekit
+

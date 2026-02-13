@@ -35,7 +35,16 @@
 ### IAllocator
 - `SetBackend`: switch allocator backend for later allocations.
 - `Allocate/Deallocate`: allocation pair with explicit status code.
-- Current implementation: system allocator backend is available.
+- `BackendName`: report current concrete backend identity.
+- `Caps`: report allocator capability flags.
+- `Stats/ResetStats`: runtime counters for alloc/free/fail/live-bytes/peak-bytes.
+- Backend switch safety rule: switching while live allocations exist returns `kWouldBlock`.
+- Current implementation: system backend is always available; mimalloc/tbb backends are optional by build flags.
+
+### GlobalAllocator
+- `Configure/ConfigureFromFile`: apply backend policy.
+- `CurrentBackend`: configured backend enum snapshot.
+- `CurrentBackendName/CurrentCaps/CurrentStats/ResetCurrentStats`: observability API for diagnostics and benchmarks.
 
 ### IExecutor
 - `Submit`: enqueue a task.
@@ -57,5 +66,3 @@
 - Do not remove existing virtual methods.
 - Additive changes require version bump.
 - ABI changes require major version increment.
-
-

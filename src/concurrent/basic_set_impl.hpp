@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <new>
 #include <unordered_set>
 #include <vector>
 
@@ -12,6 +13,8 @@
 
 namespace corekit {
 namespace concurrent {
+
+#define CK_STATUS(code, message) api::Status::FromModule((code), (message), api::ErrorModule::kConcurrent)
 
 template <typename K>
 class BasicConcurrentSetImpl : public IConcurrentSet<K> {
@@ -26,9 +29,15 @@ class BasicConcurrentSetImpl : public IConcurrentSet<K> {
   virtual api::Status Insert(const K& key) {
     std::lock_guard<std::mutex> lock(mu_);
     if (set_.find(key) != set_.end()) {
-      return api::Status(api::StatusCode::kWouldBlock, "key already exists");
+      return CK_STATUS(api::StatusCode::kWouldBlock, "key already exists");
     }
-    set_.insert(key);
+    try {
+      set_.insert(key);
+    } catch (const std::bad_alloc&) {
+      return CK_STATUS(api::StatusCode::kInternalError, "set allocation failed");
+    } catch (...) {
+      return CK_STATUS(api::StatusCode::kInternalError, "set insert failed");
+    }
     return api::Status::Ok();
   }
 
@@ -36,7 +45,7 @@ class BasicConcurrentSetImpl : public IConcurrentSet<K> {
     std::lock_guard<std::mutex> lock(mu_);
     typename SetType::iterator it = set_.find(key);
     if (it == set_.end()) {
-      return api::Status(api::StatusCode::kNotFound, "key not found");
+      return CK_STATUS(api::StatusCode::kNotFound, "key not found");
     }
     set_.erase(it);
     return api::Status::Ok();
@@ -55,19 +64,31 @@ class BasicConcurrentSetImpl : public IConcurrentSet<K> {
 
   virtual api::Status Reserve(std::size_t expected_size) {
     std::lock_guard<std::mutex> lock(mu_);
-    set_.reserve(expected_size);
+    try {
+      set_.reserve(expected_size);
+    } catch (const std::bad_alloc&) {
+      return CK_STATUS(api::StatusCode::kInternalError, "set reserve failed");
+    } catch (...) {
+      return CK_STATUS(api::StatusCode::kInternalError, "set reserve failed");
+    }
     return api::Status::Ok();
   }
 
   virtual api::Status Snapshot(std::vector<K>* keys) const {
     if (keys == NULL) {
-      return api::Status(api::StatusCode::kInvalidArgument, "keys is null");
+      return CK_STATUS(api::StatusCode::kInvalidArgument, "keys is null");
     }
     std::lock_guard<std::mutex> lock(mu_);
     keys->clear();
-    keys->reserve(set_.size());
-    for (typename SetType::const_iterator it = set_.begin(); it != set_.end(); ++it) {
-      keys->push_back(*it);
+    try {
+      keys->reserve(set_.size());
+      for (typename SetType::const_iterator it = set_.begin(); it != set_.end(); ++it) {
+        keys->push_back(*it);
+      }
+    } catch (const std::bad_alloc&) {
+      return CK_STATUS(api::StatusCode::kInternalError, "snapshot allocation failed");
+    } catch (...) {
+      return CK_STATUS(api::StatusCode::kInternalError, "snapshot failed");
     }
     return api::Status::Ok();
   }
@@ -88,5 +109,8 @@ class BasicConcurrentSetImpl : public IConcurrentSet<K> {
 template <typename K>
 using BasicConcurrentSet = BasicConcurrentSetImpl<K>;
 
+#undef CK_STATUS
+
 }  // namespace concurrent
 }  // namespace corekit
+

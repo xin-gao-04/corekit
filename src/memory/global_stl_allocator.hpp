@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <limits>
 #include <memory>
 #include <new>
 
@@ -20,6 +21,9 @@ class GlobalStlAllocator {
 
   T* allocate(std::size_t n) {
     if (n == 0) return NULL;
+    if (n > (std::numeric_limits<std::size_t>::max() / sizeof(T))) {
+      throw std::bad_alloc();
+    }
     const std::size_t bytes = n * sizeof(T);
     const std::size_t alignment = alignof(T) < sizeof(void*) ? sizeof(void*) : alignof(T);
     api::Result<void*> r = GlobalAllocator::Allocate(bytes, alignment);

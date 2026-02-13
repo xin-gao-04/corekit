@@ -7,6 +7,8 @@
 namespace corekit {
 namespace task {
 
+#define CK_STATUS(code, message) api::Status::FromModule((code), (message), api::ErrorModule::kTask)
+
 namespace {
 
 struct GraphTaskExecCtx {
@@ -43,7 +45,7 @@ api::Result<std::uint64_t> SimpleTaskGraph::AddTaskEx(void (*fn)(void*), void* u
                                                        const GraphTaskOptions& options) {
   if (fn == NULL) {
     return api::Result<std::uint64_t>(
-        api::Status(api::StatusCode::kInvalidArgument, "fn is null"));
+        CK_STATUS(api::StatusCode::kInvalidArgument, "fn is null"));
   }
   const std::uint64_t id = next_id_++;
   TaskNode node;
@@ -64,12 +66,12 @@ api::Result<std::uint64_t> SimpleTaskGraph::AddTaskEx(void (*fn)(void*), void* u
 api::Status SimpleTaskGraph::AddDependency(std::uint64_t before_task_id,
                                            std::uint64_t after_task_id) {
   if (before_task_id == after_task_id) {
-    return api::Status(api::StatusCode::kInvalidArgument,
+    return CK_STATUS(api::StatusCode::kInvalidArgument,
                        "self dependency is not allowed");
   }
   if (nodes_.find(before_task_id) == nodes_.end() ||
       nodes_.find(after_task_id) == nodes_.end()) {
-    return api::Status(api::StatusCode::kNotFound, "task id not found");
+    return CK_STATUS(api::StatusCode::kNotFound, "task id not found");
   }
   edges_[before_task_id].insert(after_task_id);
   return api::Status::Ok();
@@ -79,7 +81,7 @@ api::Status SimpleTaskGraph::AddDependencies(std::uint64_t after_task_id,
                                              const std::uint64_t* before_task_ids,
                                              std::size_t count) {
   if (count > 0 && before_task_ids == NULL) {
-    return api::Status(api::StatusCode::kInvalidArgument, "before_task_ids is null");
+    return CK_STATUS(api::StatusCode::kInvalidArgument, "before_task_ids is null");
   }
   for (std::size_t i = 0; i < count; ++i) {
     api::Status st = AddDependency(before_task_ids[i], after_task_id);
@@ -90,7 +92,7 @@ api::Status SimpleTaskGraph::AddDependencies(std::uint64_t after_task_id,
 
 api::Status SimpleTaskGraph::BuildIndegree(std::map<std::uint64_t, std::size_t>* indegree) const {
   if (indegree == NULL) {
-    return api::Status(api::StatusCode::kInvalidArgument, "indegree is null");
+    return CK_STATUS(api::StatusCode::kInvalidArgument, "indegree is null");
   }
 
   indegree->clear();
@@ -104,7 +106,7 @@ api::Status SimpleTaskGraph::BuildIndegree(std::map<std::uint64_t, std::size_t>*
     for (std::set<std::uint64_t>::const_iterator dst = eit->second.begin();
          dst != eit->second.end(); ++dst) {
       if (indegree->find(*dst) == indegree->end()) {
-        return api::Status(api::StatusCode::kInternalError,
+        return CK_STATUS(api::StatusCode::kInternalError,
                            "edge references missing node");
       }
       ++(*indegree)[*dst];
@@ -137,7 +139,7 @@ api::Status SimpleTaskGraph::Validate() const {
          dst != out->second.end(); ++dst) {
       std::map<std::uint64_t, std::size_t>::iterator d = indegree.find(*dst);
       if (d == indegree.end()) {
-        return api::Status(api::StatusCode::kInternalError,
+        return CK_STATUS(api::StatusCode::kInternalError,
                            "indegree missing for destination node");
       }
       if (d->second > 0) --d->second;
@@ -146,7 +148,7 @@ api::Status SimpleTaskGraph::Validate() const {
   }
 
   if (processed != nodes_.size()) {
-    return api::Status(api::StatusCode::kInvalidArgument,
+    return CK_STATUS(api::StatusCode::kInvalidArgument,
                        "task graph contains cycle or unresolved dependency");
   }
   return api::Status::Ok();
@@ -206,7 +208,7 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunWithExecutor(IExecutor* executor,
         std::map<std::uint64_t, TaskNode>::const_iterator nit = nodes_.find(level[i]);
         if (nit == nodes_.end()) {
           return api::Result<GraphRunStats>(
-              api::Status(api::StatusCode::kInternalError, "node missing during execution"));
+              CK_STATUS(api::StatusCode::kInternalError, "node missing during execution"));
         }
         try {
           nit->second.fn(nit->second.user_data);
@@ -225,7 +227,7 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunWithExecutor(IExecutor* executor,
         std::map<std::uint64_t, TaskNode>::const_iterator nit = nodes_.find(level[i]);
         if (nit == nodes_.end()) {
           return api::Result<GraphRunStats>(
-              api::Status(api::StatusCode::kInternalError, "node missing during execution"));
+              CK_STATUS(api::StatusCode::kInternalError, "node missing during execution"));
         }
 
         ctx[i].fn = nit->second.fn;
@@ -268,7 +270,7 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunWithExecutor(IExecutor* executor,
 
     if (level_failed && options.fail_fast) {
       return api::Result<GraphRunStats>(
-          api::Status(api::StatusCode::kInternalError, "task graph execution failed"));
+          CK_STATUS(api::StatusCode::kInternalError, "task graph execution failed"));
     }
 
     for (std::size_t i = 0; i < level.size(); ++i) {
@@ -279,7 +281,7 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunWithExecutor(IExecutor* executor,
            dst != out->second.end(); ++dst) {
         std::map<std::uint64_t, std::size_t>::iterator d = indegree.find(*dst);
         if (d == indegree.end()) {
-          return api::Result<GraphRunStats>(api::Status(
+          return api::Result<GraphRunStats>(CK_STATUS(
               api::StatusCode::kInternalError, "indegree missing for destination node"));
         }
         if (d->second > 0) --d->second;
@@ -290,7 +292,7 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunWithExecutor(IExecutor* executor,
 
   if (processed != nodes_.size()) {
     return api::Result<GraphRunStats>(
-        api::Status(api::StatusCode::kInvalidArgument,
+        CK_STATUS(api::StatusCode::kInvalidArgument,
                     "task graph contains cycle or unresolved dependency"));
   }
 
@@ -298,5 +300,8 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunWithExecutor(IExecutor* executor,
   return api::Result<GraphRunStats>(stats);
 }
 
+#undef CK_STATUS
+
 }  // namespace task
 }  // namespace corekit
+

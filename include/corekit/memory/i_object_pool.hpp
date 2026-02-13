@@ -41,6 +41,7 @@ class IObjectPool {
   // 参数：
   // - obj: 由本池 Acquire 得到的对象。
   // 返回：kOk 表示归还成功。
+  // 说明：当池内缓存已满时，实现可选择直接释放该对象而非缓存，以保证归还可完成。
   // 线程安全：线程安全。
   virtual api::Status ReleaseObject(T* obj) = 0;
 

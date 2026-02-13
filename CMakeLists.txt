@@ -19,6 +19,8 @@ option(COREKIT_BUNDLE_DEPS_STATIC
        ON)
 option(COREKIT_BUILD_EXAMPLES "Build examples" ON)
 option(COREKIT_BUILD_TESTS "Build tests" ON)
+option(COREKIT_ENABLE_MIMALLOC_BACKEND "Enable mimalloc backend support" OFF)
+option(COREKIT_ENABLE_TBBMALLOC_BACKEND "Enable tbbmalloc backend support" OFF)
 
 if (COREKIT_BUNDLE_DEPS_STATIC)
   if (NOT BUILD_SHARED_LIBS)
@@ -64,13 +66,45 @@ if (NOT TARGET glog::glog AND TARGET glog)
   add_library(glog::glog ALIAS glog)
 endif()
 
+set(COREKIT_MEMORY_SOURCES
+    src/memory/global_allocator.cpp
+    src/memory/system_allocator.cpp
+)
+set(COREKIT_EXTRA_INCLUDE_DIRS "")
+set(COREKIT_EXTRA_LIBS "")
+set(COREKIT_EXTRA_DEFS "")
+
+if (COREKIT_ENABLE_MIMALLOC_BACKEND)
+  find_path(COREKIT_MIMALLOC_INCLUDE_DIR mimalloc.h)
+  find_library(COREKIT_MIMALLOC_LIBRARY NAMES mimalloc mimalloc-static)
+  if (NOT COREKIT_MIMALLOC_INCLUDE_DIR OR NOT COREKIT_MIMALLOC_LIBRARY)
+    message(FATAL_ERROR "COREKIT_ENABLE_MIMALLOC_BACKEND=ON but mimalloc not found")
+  endif()
+  list(APPEND COREKIT_MEMORY_SOURCES src/memory/mimalloc_allocator.cpp)
+  list(APPEND COREKIT_EXTRA_INCLUDE_DIRS ${COREKIT_MIMALLOC_INCLUDE_DIR})
+  list(APPEND COREKIT_EXTRA_LIBS ${COREKIT_MIMALLOC_LIBRARY})
+  list(APPEND COREKIT_EXTRA_DEFS COREKIT_ENABLE_MIMALLOC_BACKEND=1)
+endif()
+
+if (COREKIT_ENABLE_TBBMALLOC_BACKEND)
+  find_path(COREKIT_TBBMALLOC_INCLUDE_DIR tbb/scalable_allocator.h)
+  find_library(COREKIT_TBBMALLOC_LIBRARY NAMES tbbmalloc)
+  if (NOT COREKIT_TBBMALLOC_INCLUDE_DIR OR NOT COREKIT_TBBMALLOC_LIBRARY)
+    message(FATAL_ERROR "COREKIT_ENABLE_TBBMALLOC_BACKEND=ON but tbbmalloc not found")
+  endif()
+  list(APPEND COREKIT_MEMORY_SOURCES src/memory/tbb_allocator.cpp)
+  list(APPEND COREKIT_EXTRA_INCLUDE_DIRS ${COREKIT_TBBMALLOC_INCLUDE_DIR})
+  list(APPEND COREKIT_EXTRA_LIBS ${COREKIT_TBBMALLOC_LIBRARY})
+  list(APPEND COREKIT_EXTRA_DEFS COREKIT_ENABLE_TBBMALLOC_BACKEND=1)
+endif()
+
 add_library(corekit
+    src/api/status.cpp
     src/log_manager.cpp
     src/log/log_manager_adapter.cpp
     src/ipc/shared_memory_channel.cpp
     src/json/json_codec.cpp
-    src/memory/global_allocator.cpp
-    src/memory/system_allocator.cpp
+    ${COREKIT_MEMORY_SOURCES}
     src/task/thread_pool_executor.cpp
     src/task/simple_task_graph.cpp
     src/api/c_api.cpp
@@ -85,14 +119,18 @@ target_include_directories(corekit
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${COREKIT_EXTRA_INCLUDE_DIRS}
 )
+if (COREKIT_EXTRA_DEFS)
+  target_compile_definitions(corekit PRIVATE ${COREKIT_EXTRA_DEFS})
+endif()
 target_link_libraries(corekit
     PRIVATE
         glog::glog
+        ${COREKIT_EXTRA_LIBS}
 )
 
 add_library(corekit::corekit ALIAS corekit)
-
 
 if (COREKIT_BUILD_EXAMPLES)
   add_executable(corekit_example examples/main.cpp)
@@ -156,7 +194,3 @@ if (COREKIT_BUILD_EXAMPLES)
   configure_file(config/logging.conf ${CMAKE_CURRENT_BINARY_DIR}/config/logging.conf COPYONLY)
   configure_file(config/corekit.json ${CMAKE_CURRENT_BINARY_DIR}/config/corekit.json COPYONLY)
 endif()
-
-
-
-

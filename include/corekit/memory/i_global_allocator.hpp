@@ -36,6 +36,12 @@ class COREKIT_API GlobalAllocator {
 
   // Snapshot current backend setting.
   static AllocBackend CurrentBackend();
+
+  // Runtime observability helpers.
+  static const char* CurrentBackendName();
+  static AllocatorCaps CurrentCaps();
+  static AllocatorStats CurrentStats();
+  static void ResetCurrentStats();
 };
 
 inline void* GlobalAllocOrNull(std::size_t size, std::size_t alignment) {

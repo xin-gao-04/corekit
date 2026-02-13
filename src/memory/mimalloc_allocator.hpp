@@ -11,10 +11,10 @@
 namespace corekit {
 namespace memory {
 
-class SystemAllocator : public IAllocator {
+class MimallocAllocator : public IAllocator {
  public:
-  SystemAllocator();
-  ~SystemAllocator() override;
+  MimallocAllocator();
+  ~MimallocAllocator() override;
 
   const char* Name() const override;
   const char* BackendName() const override;
@@ -34,7 +34,6 @@ class SystemAllocator : public IAllocator {
   void RecordAllocSuccess(void* ptr, std::size_t size);
   void RecordDeallocate(void* ptr);
 
-  std::atomic<int> backend_;
   std::atomic<std::uint64_t> alloc_count_;
   std::atomic<std::uint64_t> free_count_;
   std::atomic<std::uint64_t> alloc_fail_count_;

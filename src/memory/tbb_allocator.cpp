@@ -1,12 +1,8 @@
-#include "memory/system_allocator.hpp"
-
-#include <cstdlib>
+#include "memory/tbb_allocator.hpp"
 
 #include "corekit/api/version.hpp"
 
-#if defined(_WIN32)
-#include <malloc.h>
-#endif
+#include <tbb/scalable_allocator.h>
 
 namespace corekit {
 namespace memory {
@@ -18,21 +14,16 @@ bool IsPowerOfTwo(std::size_t x) { return x != 0 && (x & (x - 1)) == 0; }
 
 }  // namespace
 
-SystemAllocator::SystemAllocator()
-    : backend_(static_cast<int>(AllocBackend::kSystem)),
-      alloc_count_(0),
-      free_count_(0),
-      alloc_fail_count_(0),
-      bytes_in_use_(0),
-      bytes_peak_(0) {}
-SystemAllocator::~SystemAllocator() {}
+TbbAllocator::TbbAllocator()
+    : alloc_count_(0), free_count_(0), alloc_fail_count_(0), bytes_in_use_(0), bytes_peak_(0) {}
+TbbAllocator::~TbbAllocator() {}
 
-const char* SystemAllocator::Name() const { return "corekit.memory.system_allocator"; }
-const char* SystemAllocator::BackendName() const { return "system"; }
-std::uint32_t SystemAllocator::ApiVersion() const { return api::kApiVersion; }
-void SystemAllocator::Release() { delete this; }
+const char* TbbAllocator::Name() const { return "corekit.memory.tbb_allocator"; }
+const char* TbbAllocator::BackendName() const { return "tbb"; }
+std::uint32_t TbbAllocator::ApiVersion() const { return api::kApiVersion; }
+void TbbAllocator::Release() { delete this; }
 
-AllocatorCaps SystemAllocator::Caps() const {
+AllocatorCaps TbbAllocator::Caps() const {
   AllocatorCaps caps;
   caps.supports_aligned_alloc = true;
   caps.supports_runtime_switch = false;
@@ -40,7 +31,7 @@ AllocatorCaps SystemAllocator::Caps() const {
   return caps;
 }
 
-AllocatorStats SystemAllocator::Stats() const {
+AllocatorStats TbbAllocator::Stats() const {
   AllocatorStats s;
   s.alloc_count = alloc_count_.load(std::memory_order_relaxed);
   s.free_count = free_count_.load(std::memory_order_relaxed);
@@ -50,7 +41,7 @@ AllocatorStats SystemAllocator::Stats() const {
   return s;
 }
 
-void SystemAllocator::ResetStats() {
+void TbbAllocator::ResetStats() {
   std::uint64_t live = 0;
   {
     std::lock_guard<std::mutex> lock(size_mu_);
@@ -66,17 +57,16 @@ void SystemAllocator::ResetStats() {
   bytes_peak_.store(live, std::memory_order_relaxed);
 }
 
-void SystemAllocator::RecordAllocFailure() {
+void TbbAllocator::RecordAllocFailure() {
   alloc_fail_count_.fetch_add(1, std::memory_order_relaxed);
 }
 
-void SystemAllocator::RecordAllocSuccess(void* ptr, std::size_t size) {
+void TbbAllocator::RecordAllocSuccess(void* ptr, std::size_t size) {
   alloc_count_.fetch_add(1, std::memory_order_relaxed);
   {
     std::lock_guard<std::mutex> lock(size_mu_);
     alloc_sizes_[ptr] = size;
   }
-
   const std::uint64_t in_use_now =
       bytes_in_use_.fetch_add(static_cast<std::uint64_t>(size), std::memory_order_relaxed) +
       static_cast<std::uint64_t>(size);
@@ -88,7 +78,7 @@ void SystemAllocator::RecordAllocSuccess(void* ptr, std::size_t size) {
   }
 }
 
-void SystemAllocator::RecordDeallocate(void* ptr) {
+void TbbAllocator::RecordDeallocate(void* ptr) {
   std::size_t released = 0;
   {
     std::lock_guard<std::mutex> lock(size_mu_);
@@ -113,22 +103,15 @@ void SystemAllocator::RecordDeallocate(void* ptr) {
   }
 }
 
-api::Status SystemAllocator::SetBackend(AllocBackend backend) {
-  if (backend != AllocBackend::kSystem) {
+api::Status TbbAllocator::SetBackend(AllocBackend backend) {
+  if (backend != AllocBackend::kTbbScalable) {
     return CK_STATUS(api::StatusCode::kUnsupported,
-                     "Only kSystem backend is implemented in current stage");
+                     "TbbAllocator only supports kTbbScalable backend");
   }
-  backend_.store(static_cast<int>(backend), std::memory_order_release);
   return api::Status::Ok();
 }
 
-api::Result<void*> SystemAllocator::Allocate(std::size_t size, std::size_t alignment) {
-  if (static_cast<AllocBackend>(backend_.load(std::memory_order_acquire)) !=
-      AllocBackend::kSystem) {
-    RecordAllocFailure();
-    return api::Result<void*>(CK_STATUS(api::StatusCode::kUnsupported,
-                                        "Selected backend is not implemented"));
-  }
+api::Result<void*> TbbAllocator::Allocate(std::size_t size, std::size_t alignment) {
   if (size == 0) {
     RecordAllocFailure();
     return api::Result<void*>(CK_STATUS(api::StatusCode::kInvalidArgument, "size must be > 0"));
@@ -139,34 +122,20 @@ api::Result<void*> SystemAllocator::Allocate(std::size_t size, std::size_t align
                                         "alignment must be power-of-two and >= sizeof(void*)"));
   }
 
-#if defined(_WIN32)
-  void* ptr = _aligned_malloc(size, alignment);
+  void* ptr = scalable_aligned_malloc(size, alignment);
   if (ptr == NULL) {
     RecordAllocFailure();
-    return api::Result<void*>(CK_STATUS(api::StatusCode::kInternalError, "_aligned_malloc failed"));
+    return api::Result<void*>(CK_STATUS(api::StatusCode::kInternalError,
+                                        "scalable_aligned_malloc failed"));
   }
-#else
-  void* ptr = NULL;
-  if (posix_memalign(&ptr, alignment, size) != 0 || ptr == NULL) {
-    RecordAllocFailure();
-    return api::Result<void*>(CK_STATUS(api::StatusCode::kInternalError, "posix_memalign failed"));
-  }
-#endif
   RecordAllocSuccess(ptr, size);
   return api::Result<void*>(ptr);
 }
 
-api::Status SystemAllocator::Deallocate(void* ptr) {
-  if (ptr == NULL) {
-    return api::Status::Ok();
-  }
-
+api::Status TbbAllocator::Deallocate(void* ptr) {
+  if (ptr == NULL) return api::Status::Ok();
   RecordDeallocate(ptr);
-#if defined(_WIN32)
-  _aligned_free(ptr);
-#else
-  std::free(ptr);
-#endif
+  scalable_aligned_free(ptr);
   return api::Status::Ok();
 }
 

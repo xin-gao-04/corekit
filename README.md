@@ -27,6 +27,10 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
+Optional memory backend toggles (off by default):
+- `-DCOREKIT_ENABLE_MIMALLOC_BACKEND=ON`
+- `-DCOREKIT_ENABLE_TBBMALLOC_BACKEND=ON`
+
 ## Quick usage (interface style)
 ```cpp
 #include "corekit/corekit.hpp"
@@ -60,6 +64,16 @@ COREKIT_DELETE(v);
 Memory JSON schema:
 - `memory.backend = "system|tbb|mimalloc"`
 - `memory.strict_backend = true|false`
+
+Allocator observability:
+- `corekit::memory::GlobalAllocator::CurrentBackendName()`
+- `corekit::memory::GlobalAllocator::CurrentCaps()`
+- `corekit::memory::GlobalAllocator::CurrentStats()`
+- `corekit::memory::GlobalAllocator::ResetCurrentStats()`
+
+Backend switch safety:
+- Switching backend is blocked (`kWouldBlock`) when current allocator still has live bytes.
+- With `strict_backend=false`, unsupported backend request falls back to `system`.
 
 ## IPC usage (v1)
 - Server creates a named channel via `OpenServer`.

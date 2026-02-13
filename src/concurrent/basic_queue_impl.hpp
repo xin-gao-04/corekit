@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <deque>
 #include <mutex>
+#include <new>
 #include <string>
 #include <utility>
 
@@ -13,6 +14,8 @@
 
 namespace corekit {
 namespace concurrent {
+
+#define CK_STATUS(code, message) api::Status::FromModule((code), (message), api::ErrorModule::kConcurrent)
 
 template <typename T>
 class BasicMutexQueueImpl : public IQueue<T> {
@@ -27,34 +30,54 @@ class BasicMutexQueueImpl : public IQueue<T> {
   virtual api::Status TryPush(const T& value) {
     std::lock_guard<std::mutex> lock(mu_);
     if (capacity_ > 0 && queue_.size() >= capacity_) {
-      return api::Status(api::StatusCode::kWouldBlock, "queue is full");
+      return CK_STATUS(api::StatusCode::kWouldBlock, "queue is full");
     }
-    queue_.push_back(value);
+    try {
+      queue_.push_back(value);
+    } catch (const std::bad_alloc&) {
+      return CK_STATUS(api::StatusCode::kInternalError, "queue allocation failed");
+    } catch (...) {
+      return CK_STATUS(api::StatusCode::kInternalError, "queue push failed");
+    }
     return api::Status::Ok();
   }
 
   virtual api::Status TryPushMove(T&& value) {
     std::lock_guard<std::mutex> lock(mu_);
     if (capacity_ > 0 && queue_.size() >= capacity_) {
-      return api::Status(api::StatusCode::kWouldBlock, "queue is full");
+      return CK_STATUS(api::StatusCode::kWouldBlock, "queue is full");
     }
-    queue_.push_back(std::move(value));
+    try {
+      queue_.push_back(std::move(value));
+    } catch (const std::bad_alloc&) {
+      return CK_STATUS(api::StatusCode::kInternalError, "queue allocation failed");
+    } catch (...) {
+      return CK_STATUS(api::StatusCode::kInternalError, "queue push failed");
+    }
     return api::Status::Ok();
   }
 
   virtual api::Status TryPushBatch(const T* values, std::size_t count, std::size_t* pushed) {
     if (pushed != NULL) *pushed = 0;
     if (values == NULL && count > 0) {
-      return api::Status(api::StatusCode::kInvalidArgument, "values is null");
+      return CK_STATUS(api::StatusCode::kInvalidArgument, "values is null");
     }
     std::lock_guard<std::mutex> lock(mu_);
     std::size_t done = 0;
     while (done < count) {
       if (capacity_ > 0 && queue_.size() >= capacity_) {
         if (pushed != NULL) *pushed = done;
-        return api::Status(api::StatusCode::kWouldBlock, "queue is full");
+        return CK_STATUS(api::StatusCode::kWouldBlock, "queue is full");
       }
-      queue_.push_back(values[done]);
+      try {
+        queue_.push_back(values[done]);
+      } catch (const std::bad_alloc&) {
+        if (pushed != NULL) *pushed = done;
+        return CK_STATUS(api::StatusCode::kInternalError, "queue allocation failed");
+      } catch (...) {
+        if (pushed != NULL) *pushed = done;
+        return CK_STATUS(api::StatusCode::kInternalError, "queue push failed");
+      }
       ++done;
     }
     if (pushed != NULL) *pushed = done;
@@ -64,9 +87,9 @@ class BasicMutexQueueImpl : public IQueue<T> {
   virtual api::Result<T> TryPop() {
     std::lock_guard<std::mutex> lock(mu_);
     if (queue_.empty()) {
-      return api::Result<T>(api::Status(api::StatusCode::kWouldBlock, "queue is empty"));
+      return api::Result<T>(CK_STATUS(api::StatusCode::kWouldBlock, "queue is empty"));
     }
-    T value = queue_.front();
+    T value = std::move(queue_.front());
     queue_.pop_front();
     return api::Result<T>(value);
   }
@@ -83,11 +106,11 @@ class BasicMutexQueueImpl : public IQueue<T> {
 
   virtual api::Status TryPeek(T* out) const {
     if (out == NULL) {
-      return api::Status(api::StatusCode::kInvalidArgument, "out is null");
+      return CK_STATUS(api::StatusCode::kInvalidArgument, "out is null");
     }
     std::lock_guard<std::mutex> lock(mu_);
     if (queue_.empty()) {
-      return api::Status(api::StatusCode::kWouldBlock, "queue is empty");
+      return CK_STATUS(api::StatusCode::kWouldBlock, "queue is empty");
     }
     *out = queue_.front();
     return api::Status::Ok();
@@ -96,17 +119,22 @@ class BasicMutexQueueImpl : public IQueue<T> {
   virtual api::Status TryPopBatch(T* out_values, std::size_t capacity, std::size_t* popped) {
     if (popped != NULL) *popped = 0;
     if (out_values == NULL && capacity > 0) {
-      return api::Status(api::StatusCode::kInvalidArgument, "out_values is null");
+      return CK_STATUS(api::StatusCode::kInvalidArgument, "out_values is null");
     }
     std::lock_guard<std::mutex> lock(mu_);
     if (queue_.empty()) {
-      return api::Status(api::StatusCode::kWouldBlock, "queue is empty");
+      return CK_STATUS(api::StatusCode::kWouldBlock, "queue is empty");
     }
     std::size_t done = 0;
     while (done < capacity && !queue_.empty()) {
-      out_values[done] = queue_.front();
-      queue_.pop_front();
-      ++done;
+      try {
+        out_values[done] = std::move(queue_.front());
+        queue_.pop_front();
+        ++done;
+      } catch (...) {
+        if (popped != NULL) *popped = done;
+        return CK_STATUS(api::StatusCode::kInternalError, "queue pop batch failed");
+      }
     }
     if (popped != NULL) *popped = done;
     return api::Status::Ok();
@@ -130,5 +158,8 @@ class BasicMutexQueueImpl : public IQueue<T> {
 template <typename T>
 using BasicMutexQueue = BasicMutexQueueImpl<T>;
 
+#undef CK_STATUS
+
 }  // namespace concurrent
 }  // namespace corekit
+

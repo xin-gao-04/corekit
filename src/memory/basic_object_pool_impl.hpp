@@ -15,6 +15,8 @@
 namespace corekit {
 namespace memory {
 
+#define CK_STATUS(code, message) api::Status::FromModule((code), (message), api::ErrorModule::kMemory)
+
 template <typename T>
 class BasicObjectPoolImpl : public IObjectPool<T> {
  public:
@@ -69,18 +71,20 @@ class BasicObjectPoolImpl : public IObjectPool<T> {
 
   virtual api::Status ReleaseObject(T* obj) {
     if (obj == NULL) {
-      return api::Status(api::StatusCode::kInvalidArgument, "obj is null");
+      return CK_STATUS(api::StatusCode::kInvalidArgument, "obj is null");
     }
 
     std::lock_guard<std::mutex> lock(mu_);
     if (all_set_.find(obj) == all_set_.end()) {
-      return api::Status(api::StatusCode::kInvalidArgument, "object does not belong to this pool");
+      return CK_STATUS(api::StatusCode::kInvalidArgument, "object does not belong to this pool");
     }
     if (free_set_.find(obj) != free_set_.end()) {
-      return api::Status(api::StatusCode::kInvalidArgument, "object already released");
+      return CK_STATUS(api::StatusCode::kInvalidArgument, "object already released");
     }
     if (free_.size() >= max_cached_) {
-      return api::Status(api::StatusCode::kWouldBlock, "pool free cache is full");
+      EraseFromAll(obj);
+      DestroyOne(obj);
+      return api::Status::Ok();
     }
     free_.push_back(obj);
     free_set_.insert(obj);
@@ -112,8 +116,8 @@ class BasicObjectPoolImpl : public IObjectPool<T> {
   virtual api::Status Clear() {
     std::lock_guard<std::mutex> lock(mu_);
     if (free_.size() != all_.size()) {
-      return api::Status(api::StatusCode::kWouldBlock,
-                         "cannot clear pool while objects are still acquired");
+      return CK_STATUS(api::StatusCode::kWouldBlock,
+                       "cannot clear pool while objects are still acquired");
     }
     for (std::size_t i = 0; i < all_.size(); ++i) {
       DestroyOne(all_[i]);
@@ -141,15 +145,15 @@ class BasicObjectPoolImpl : public IObjectPool<T> {
     const std::size_t alignment = alignof(T) < sizeof(void*) ? sizeof(void*) : alignof(T);
     api::Result<void*> mem = GlobalAllocator::Allocate(sizeof(T), alignment);
     if (!mem.ok() || mem.value() == NULL) {
-      return api::Result<T*>(api::Status(api::StatusCode::kInternalError, "pool allocate failed"));
+      return api::Result<T*>(CK_STATUS(api::StatusCode::kInternalError, "pool allocate failed"));
     }
     T* obj = NULL;
     try {
       obj = new (mem.value()) T();
     } catch (...) {
       GlobalAllocator::Deallocate(mem.value());
-      return api::Result<T*>(api::Status(api::StatusCode::kInternalError,
-                                         "pool object construction failed"));
+      return api::Result<T*>(CK_STATUS(api::StatusCode::kInternalError,
+                                       "pool object construction failed"));
     }
     return api::Result<T*>(obj);
   }
@@ -173,6 +177,8 @@ class BasicObjectPoolImpl : public IObjectPool<T> {
 
 template <typename T>
 using BasicObjectPool = BasicObjectPoolImpl<T>;
+
+#undef CK_STATUS
 
 }  // namespace memory
 }  // namespace corekit
