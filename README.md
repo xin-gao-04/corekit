@@ -97,3 +97,16 @@ Backend switch safety:
 - Current IPC backend implementation is Windows-first (`CreateFileMapping` based).
 - API comments are attached directly to virtual methods, focused on usability.
 - Legacy logging internals are kept in `include/corekit/legacy/log_manager_legacy.hpp`.
+
+## Memory performance compare
+Build and run:
+```bash
+cmake --build build --config Release --target memory_perf_compare
+./build/Release/memory_perf_compare.exe 300000
+```
+
+Output includes:
+- `new_delete`
+- `object_pool`
+- `global_allocator[system|mimalloc|tbb]`
+- unavailable backends are reported as `SKIP`.

@@ -829,6 +829,72 @@ bool TestGlobalAllocatorSwitchWhenInUse() {
 
   return true;
 }
+bool TestGlobalAllocatorUsabilityFlow() {
+  corekit::memory::GlobalAllocatorOptions opt;
+  opt.backend = corekit::memory::AllocBackend::kSystem;
+  opt.strict_backend = true;
+  if (!corekit::memory::GlobalAllocator::Configure(opt).ok()) return false;
+
+  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kSystem) {
+    return false;
+  }
+  if (std::strcmp(corekit::memory::GlobalAllocator::CurrentBackendName(), "system") != 0) {
+    return false;
+  }
+
+  corekit::memory::GlobalAllocator::ResetCurrentStats();
+  corekit::memory::AllocatorStats before = corekit::memory::GlobalAllocator::CurrentStats();
+  if (before.alloc_count != 0 || before.bytes_in_use != 0) return false;
+
+  void* p = COREKIT_ALLOC_ALIGNED(512, 64);
+  if (p == NULL) return false;
+  if ((reinterpret_cast<std::uintptr_t>(p) & 63u) != 0u) return false;
+
+  corekit::memory::AllocatorStats mid = corekit::memory::GlobalAllocator::CurrentStats();
+  if (mid.alloc_count < 1 || mid.bytes_in_use < 512) return false;
+
+  COREKIT_FREE(p);
+  corekit::memory::AllocatorStats after = corekit::memory::GlobalAllocator::CurrentStats();
+  if (after.free_count < 1) return false;
+  if (after.bytes_in_use != 0) return false;
+
+  return true;
+}
+
+bool TestGlobalAllocatorFallbackStrictness() {
+  corekit::memory::GlobalAllocatorOptions strict_opt;
+  strict_opt.backend = corekit::memory::AllocBackend::kMimalloc;
+  strict_opt.strict_backend = true;
+  corekit::api::Status strict_st = corekit::memory::GlobalAllocator::Configure(strict_opt);
+#if defined(COREKIT_ENABLE_MIMALLOC_BACKEND)
+  if (!strict_st.ok()) return false;
+  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kMimalloc) {
+    return false;
+  }
+#else
+  if (strict_st.code() != corekit::api::StatusCode::kUnsupported) return false;
+#endif
+
+  corekit::memory::GlobalAllocatorOptions soft_opt;
+  soft_opt.backend = corekit::memory::AllocBackend::kMimalloc;
+  soft_opt.strict_backend = false;
+  corekit::api::Status soft_st = corekit::memory::GlobalAllocator::Configure(soft_opt);
+  if (!soft_st.ok()) return false;
+#if defined(COREKIT_ENABLE_MIMALLOC_BACKEND)
+  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kMimalloc) {
+    return false;
+  }
+#else
+  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kSystem) {
+    return false;
+  }
+#endif
+
+  corekit::memory::GlobalAllocatorOptions reset;
+  reset.backend = corekit::memory::AllocBackend::kSystem;
+  reset.strict_backend = true;
+  return corekit::memory::GlobalAllocator::Configure(reset).ok();
+}
 bool TestStatusHexCatalog() {
   const corekit::api::Status st = corekit::api::Status::FromModule(
       corekit::api::StatusCode::kInvalidArgument, "bad input",
@@ -893,6 +959,8 @@ int main() {
       {"global_stl_allocator_vector_growth", TestGlobalStlAllocatorVectorGrowth},
       {"global_allocator_observability", TestGlobalAllocatorObservability},
       {"global_allocator_switch_when_in_use", TestGlobalAllocatorSwitchWhenInUse},
+      {"global_allocator_usability_flow", TestGlobalAllocatorUsabilityFlow},
+      {"global_allocator_fallback_strictness", TestGlobalAllocatorFallbackStrictness},
       {"status_hex_catalog", TestStatusHexCatalog},
   };
 
@@ -908,6 +976,7 @@ int main() {
 
   return failed == 0 ? 0 : 1;
 }
+
 
 
 

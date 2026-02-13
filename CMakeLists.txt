@@ -188,9 +188,14 @@ if (COREKIT_BUILD_TESTS)
   add_executable(interface_tests tests/interface_tests.cpp)
   target_link_libraries(interface_tests PRIVATE corekit)
   add_test(NAME interface_tests COMMAND interface_tests)
+
+  add_executable(memory_perf_compare tests/memory_perf_compare.cpp)
+  target_link_libraries(memory_perf_compare PRIVATE corekit)
 endif()
 
 if (COREKIT_BUILD_EXAMPLES)
   configure_file(config/logging.conf ${CMAKE_CURRENT_BINARY_DIR}/config/logging.conf COPYONLY)
   configure_file(config/corekit.json ${CMAKE_CURRENT_BINARY_DIR}/config/corekit.json COPYONLY)
 endif()
+
+
