@@ -20,6 +20,19 @@ A dedicated C++ utility toolkit for engineering and simulation workloads, delive
 - Design docs and diagrams under `docs/`.
 - Third-party vendor entry folder: `3party/`.
 
+## Local third-party dependencies
+This project now uses local dependencies from `3party/` (no `FetchContent` online pull in normal build flow).
+
+Required layout:
+- `3party/glog`
+- `3party/mimalloc`
+- `3party/oneTBB`
+
+CMake options:
+- `COREKIT_THIRDPARTY_DIR` (default: `${CMAKE_SOURCE_DIR}/3party`)
+- `COREKIT_ENABLE_MIMALLOC_BACKEND=ON|OFF`
+- `COREKIT_ENABLE_TBBMALLOC_BACKEND=ON|OFF`
+
 ## Build
 ```bash
 cmake -S . -B build
@@ -27,9 +40,17 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
-Optional memory backend toggles (off by default):
-- `-DCOREKIT_ENABLE_MIMALLOC_BACKEND=ON`
-- `-DCOREKIT_ENABLE_TBBMALLOC_BACKEND=ON`
+## VS2015 full-backend build (system + mimalloc + tbb)
+```bash
+cmake -S . -B build_vs2015_local -G "Visual Studio 14 2015 Win64" \
+  -DCOREKIT_BUILD_EXAMPLES=OFF \
+  -DCOREKIT_BUILD_TESTS=ON \
+  -DCOREKIT_ENABLE_MIMALLOC_BACKEND=ON \
+  -DCOREKIT_ENABLE_TBBMALLOC_BACKEND=ON
+
+cmake --build build_vs2015_local --config Release --target corekit interface_tests corekit_legacy_tests memory_perf_compare
+ctest --test-dir build_vs2015_local -C Release --output-on-failure
+```
 
 ## Quick usage (interface style)
 ```cpp
@@ -71,6 +92,10 @@ Allocator observability:
 - `corekit::memory::GlobalAllocator::CurrentStats()`
 - `corekit::memory::GlobalAllocator::ResetCurrentStats()`
 
+Backend introspection helpers:
+- `corekit::memory::GlobalAllocator::BackendDisplayName(AllocBackend)`
+- `corekit::memory::GlobalAllocator::IsBackendEnabled(AllocBackend)`
+
 Backend switch safety:
 - Switching backend is blocked (`kWouldBlock`) when current allocator still has live bytes.
 - With `strict_backend=false`, unsupported backend request falls back to `system`.
@@ -101,12 +126,12 @@ Backend switch safety:
 ## Memory performance compare
 Build and run:
 ```bash
-cmake --build build --config Release --target memory_perf_compare
-./build/Release/memory_perf_compare.exe 300000
+cmake --build build_vs2015_local --config Release --target memory_perf_compare
+./build_vs2015_local/Release/memory_perf_compare.exe 300000
 ```
 
 Output includes:
 - `new_delete`
 - `object_pool`
 - `global_allocator[system|mimalloc|tbb]`
-- unavailable backends are reported as `SKIP`.
+

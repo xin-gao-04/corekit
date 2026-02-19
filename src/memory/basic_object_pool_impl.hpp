@@ -43,10 +43,24 @@ class BasicObjectPoolImpl : public IObjectPool<T> {
       if (!created.ok()) {
         return created.status();
       }
-      all_.push_back(created.value());
-      all_set_.insert(created.value());
-      free_.push_back(created.value());
-      free_set_.insert(created.value());
+      T* ptr = created.value();
+      try {
+        all_.push_back(ptr);
+        all_set_.insert(ptr);
+        free_.push_back(ptr);
+        free_set_.insert(ptr);
+      } catch (...) {
+        EraseFromAll(ptr);
+        free_set_.erase(ptr);
+        for (typename PtrVector::iterator it = free_.begin(); it != free_.end(); ++it) {
+          if (*it == ptr) {
+            free_.erase(it);
+            break;
+          }
+        }
+        DestroyOne(ptr);
+        return CK_STATUS(api::StatusCode::kInternalError, "pool bookkeeping failed in Reserve");
+      }
     }
     return api::Status::Ok();
   }
@@ -64,9 +78,17 @@ class BasicObjectPoolImpl : public IObjectPool<T> {
     if (!created.ok()) {
       return created;
     }
-    all_.push_back(created.value());
-    all_set_.insert(created.value());
-    return api::Result<T*>(created.value());
+    T* ptr = created.value();
+    try {
+      all_.push_back(ptr);
+      all_set_.insert(ptr);
+    } catch (...) {
+      EraseFromAll(ptr);
+      DestroyOne(ptr);
+      return api::Result<T*>(CK_STATUS(api::StatusCode::kInternalError,
+                                       "pool bookkeeping failed in Acquire"));
+    }
+    return api::Result<T*>(ptr);
   }
 
   virtual api::Status ReleaseObject(T* obj) {
@@ -86,8 +108,12 @@ class BasicObjectPoolImpl : public IObjectPool<T> {
       DestroyOne(obj);
       return api::Status::Ok();
     }
-    free_.push_back(obj);
-    free_set_.insert(obj);
+    try {
+      free_.push_back(obj);
+      free_set_.insert(obj);
+    } catch (...) {
+      return CK_STATUS(api::StatusCode::kInternalError, "pool bookkeeping failed in ReleaseObject");
+    }
     return api::Status::Ok();
   }
 
@@ -182,3 +208,4 @@ using BasicObjectPool = BasicObjectPoolImpl<T>;
 
 }  // namespace memory
 }  // namespace corekit
+

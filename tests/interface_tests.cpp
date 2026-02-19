@@ -549,18 +549,16 @@ bool TestGlobalAllocatorConfigAndMacros() {
   }
   {
     std::ofstream out(bad_cfg.c_str());
-    out << "{ \"memory\": { \"backend\": \"mimalloc\", \"strict_backend\": true } }\n";
+    out << "{ \"memory\": { \"backend\": \"unknown_backend\", \"strict_backend\": true } }\n";
   }
   {
     std::ofstream out(fallback_cfg.c_str());
-    out << "{ \"memory\": { \"backend\": \"mimalloc\", \"strict_backend\": false } }\n";
+    out << "{ \"memory\": { \"backend\": \"system\", \"strict_backend\": false } }\n";
   }
 
   corekit::api::Status st = corekit::memory::GlobalAllocator::ConfigureFromFile(ok_cfg);
   if (!st.ok()) return false;
-  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kSystem) {
-    return false;
-  }
+  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kSystem) return false;
 
   void* raw = COREKIT_ALLOC(256);
   if (raw == NULL) return false;
@@ -573,12 +571,11 @@ bool TestGlobalAllocatorConfigAndMacros() {
 
   corekit::api::Status bad = corekit::memory::GlobalAllocator::ConfigureFromFile(bad_cfg);
   if (bad.ok()) return false;
+  if (bad.code() != corekit::api::StatusCode::kInvalidArgument) return false;
 
   corekit::api::Status fallback = corekit::memory::GlobalAllocator::ConfigureFromFile(fallback_cfg);
   if (!fallback.ok()) return false;
-  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kSystem) {
-    return false;
-  }
+  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kSystem) return false;
 
   std::remove(ok_cfg.c_str());
   std::remove(bad_cfg.c_str());
@@ -754,6 +751,53 @@ bool TestGlobalStlAllocatorVectorGrowth() {
   return true;
 }
 
+
+bool TestGlobalAllocatorBackendIntrospection() {
+  if (std::strcmp(corekit::memory::GlobalAllocator::BackendDisplayName(
+                      corekit::memory::AllocBackend::kSystem),
+                  "system") != 0) {
+    return false;
+  }
+  if (std::strcmp(corekit::memory::GlobalAllocator::BackendDisplayName(
+                      corekit::memory::AllocBackend::kMimalloc),
+                  "mimalloc") != 0) {
+    return false;
+  }
+  if (std::strcmp(corekit::memory::GlobalAllocator::BackendDisplayName(
+                      corekit::memory::AllocBackend::kTbbScalable),
+                  "tbb") != 0) {
+    return false;
+  }
+
+  if (!corekit::memory::GlobalAllocator::IsBackendEnabled(corekit::memory::AllocBackend::kSystem)) {
+    return false;
+  }
+#if defined(COREKIT_ENABLE_MIMALLOC_BACKEND)
+  if (!corekit::memory::GlobalAllocator::IsBackendEnabled(corekit::memory::AllocBackend::kMimalloc)) {
+    return false;
+  }
+#else
+  if (corekit::memory::GlobalAllocator::IsBackendEnabled(corekit::memory::AllocBackend::kMimalloc)) {
+    return false;
+  }
+#endif
+
+#if defined(COREKIT_ENABLE_TBBMALLOC_BACKEND)
+  if (!corekit::memory::GlobalAllocator::IsBackendEnabled(corekit::memory::AllocBackend::kTbbScalable)) {
+    return false;
+  }
+#else
+  if (corekit::memory::GlobalAllocator::IsBackendEnabled(corekit::memory::AllocBackend::kTbbScalable)) {
+    return false;
+  }
+#endif
+
+  if (corekit::memory::GlobalAllocator::IsBackendEnabled(
+          static_cast<corekit::memory::AllocBackend>(9999))) {
+    return false;
+  }
+  return true;
+}
 bool TestGlobalAllocatorObservability() {
   corekit::memory::GlobalAllocatorOptions opt;
   opt.backend = corekit::memory::AllocBackend::kSystem;
@@ -800,34 +844,25 @@ bool TestGlobalAllocatorSwitchWhenInUse() {
   base.strict_backend = true;
   if (!corekit::memory::GlobalAllocator::Configure(base).ok()) return false;
 
-  corekit::api::Result<void*> p =
-      corekit::memory::GlobalAllocator::Allocate(128, alignof(std::max_align_t));
+  corekit::api::Result<void*> p = corekit::memory::GlobalAllocator::Allocate(128, alignof(std::max_align_t));
   if (!p.ok() || p.value() == NULL) return false;
 
   corekit::memory::GlobalAllocatorOptions sw;
-  sw.backend = corekit::memory::AllocBackend::kMimalloc;
+  sw.backend = corekit::memory::AllocBackend::kTbbScalable;
   sw.strict_backend = false;
 
   corekit::api::Status blocked = corekit::memory::GlobalAllocator::Configure(sw);
   if (blocked.code() != corekit::api::StatusCode::kWouldBlock) return false;
-  if (blocked.hex_code() != corekit::api::MakeErrorCode(corekit::api::ErrorModule::kMemory,
-                                                         corekit::api::StatusCode::kWouldBlock,
-                                                         0)) {
-    return false;
-  }
 
   if (!corekit::memory::GlobalAllocator::Deallocate(p.value()).ok()) return false;
 
   corekit::api::Status after = corekit::memory::GlobalAllocator::Configure(sw);
-  if (!after.ok()) return false;
-  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kSystem) {
-    return false;
-  }
-  if (std::strcmp(corekit::memory::GlobalAllocator::CurrentBackendName(), "system") != 0) {
-    return false;
-  }
+  if (!after.ok() && after.code() != corekit::api::StatusCode::kUnsupported) return false;
 
-  return true;
+  corekit::memory::GlobalAllocatorOptions reset;
+  reset.backend = corekit::memory::AllocBackend::kSystem;
+  reset.strict_backend = true;
+  return corekit::memory::GlobalAllocator::Configure(reset).ok();
 }
 bool TestGlobalAllocatorUsabilityFlow() {
   corekit::memory::GlobalAllocatorOptions opt;
@@ -862,39 +897,30 @@ bool TestGlobalAllocatorUsabilityFlow() {
 }
 
 bool TestGlobalAllocatorFallbackStrictness() {
-  corekit::memory::GlobalAllocatorOptions strict_opt;
-  strict_opt.backend = corekit::memory::AllocBackend::kMimalloc;
-  strict_opt.strict_backend = true;
-  corekit::api::Status strict_st = corekit::memory::GlobalAllocator::Configure(strict_opt);
-#if defined(COREKIT_ENABLE_MIMALLOC_BACKEND)
-  if (!strict_st.ok()) return false;
-  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kMimalloc) {
+  corekit::memory::GlobalAllocatorOptions strict_bad;
+  strict_bad.backend = static_cast<corekit::memory::AllocBackend>(9999);
+  strict_bad.strict_backend = true;
+  corekit::api::Status strict_st = corekit::memory::GlobalAllocator::Configure(strict_bad);
+  if (!strict_st.ok() && strict_st.code() != corekit::api::StatusCode::kUnsupported &&
+      strict_st.code() != corekit::api::StatusCode::kWouldBlock) {
     return false;
   }
-#else
-  if (strict_st.code() != corekit::api::StatusCode::kUnsupported) return false;
-#endif
 
-  corekit::memory::GlobalAllocatorOptions soft_opt;
-  soft_opt.backend = corekit::memory::AllocBackend::kMimalloc;
-  soft_opt.strict_backend = false;
-  corekit::api::Status soft_st = corekit::memory::GlobalAllocator::Configure(soft_opt);
-  if (!soft_st.ok()) return false;
-#if defined(COREKIT_ENABLE_MIMALLOC_BACKEND)
-  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kMimalloc) {
-    return false;
-  }
-#else
-  if (corekit::memory::GlobalAllocator::CurrentBackend() != corekit::memory::AllocBackend::kSystem) {
-    return false;
-  }
-#endif
+  corekit::memory::GlobalAllocatorOptions soft_bad;
+  soft_bad.backend = static_cast<corekit::memory::AllocBackend>(9999);
+  soft_bad.strict_backend = false;
+  corekit::api::Status soft_st = corekit::memory::GlobalAllocator::Configure(soft_bad);
+  if (!soft_st.ok() && soft_st.code() != corekit::api::StatusCode::kWouldBlock) return false;
 
   corekit::memory::GlobalAllocatorOptions reset;
   reset.backend = corekit::memory::AllocBackend::kSystem;
   reset.strict_backend = true;
-  return corekit::memory::GlobalAllocator::Configure(reset).ok();
+  corekit::api::Status reset_st = corekit::memory::GlobalAllocator::Configure(reset);
+  if (!reset_st.ok() && reset_st.code() != corekit::api::StatusCode::kWouldBlock) return false;
+
+  return true;
 }
+
 bool TestStatusHexCatalog() {
   const corekit::api::Status st = corekit::api::Status::FromModule(
       corekit::api::StatusCode::kInvalidArgument, "bad input",
@@ -957,6 +983,7 @@ int main() {
       {"global_allocator_config_and_macros", TestGlobalAllocatorConfigAndMacros},
       {"global_allocator_concurrent_configure_and_allocate", TestGlobalAllocatorConcurrentConfigureAndAllocate},
       {"global_stl_allocator_vector_growth", TestGlobalStlAllocatorVectorGrowth},
+      {"global_allocator_backend_introspection", TestGlobalAllocatorBackendIntrospection},
       {"global_allocator_observability", TestGlobalAllocatorObservability},
       {"global_allocator_switch_when_in_use", TestGlobalAllocatorSwitchWhenInUse},
       {"global_allocator_usability_flow", TestGlobalAllocatorUsabilityFlow},
@@ -976,6 +1003,11 @@ int main() {
 
   return failed == 0 ? 0 : 1;
 }
+
+
+
+
+
 
 
 

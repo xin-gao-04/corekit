@@ -37,6 +37,10 @@ class COREKIT_API GlobalAllocator {
   // Snapshot current backend setting.
   static AllocBackend CurrentBackend();
 
+  // Backend metadata/introspection.
+  static const char* BackendDisplayName(AllocBackend backend);
+  static bool IsBackendEnabled(AllocBackend backend);
+
   // Runtime observability helpers.
   static const char* CurrentBackendName();
   static AllocatorCaps CurrentCaps();
@@ -87,3 +91,4 @@ void GlobalDelete(T* ptr) {
 #define COREKIT_NEW(Type, ...) ::corekit::memory::GlobalNew<Type>(__VA_ARGS__)
 
 #define COREKIT_DELETE(ptr) ::corekit::memory::GlobalDelete((ptr))
+

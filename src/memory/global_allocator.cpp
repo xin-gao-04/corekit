@@ -82,6 +82,35 @@ api::Status ParseBackend(const std::string& value, AllocBackend* out) {
   return CK_STATUS(api::StatusCode::kInvalidArgument, "memory.backend is invalid");
 }
 
+const char* BackendDisplayNameImpl(AllocBackend backend) {
+  switch (backend) {
+    case AllocBackend::kSystem:
+      return "system";
+    case AllocBackend::kMimalloc:
+      return "mimalloc";
+    case AllocBackend::kTbbScalable:
+      return "tbb";
+    default:
+      return "unknown";
+  }
+}
+
+bool IsBackendEnabledImpl(AllocBackend backend) {
+  switch (backend) {
+    case AllocBackend::kSystem:
+      return true;
+#if defined(COREKIT_ENABLE_MIMALLOC_BACKEND)
+    case AllocBackend::kMimalloc:
+      return true;
+#endif
+#if defined(COREKIT_ENABLE_TBBMALLOC_BACKEND)
+    case AllocBackend::kTbbScalable:
+      return true;
+#endif
+    default:
+      return false;
+  }
+}
 }  // namespace
 
 api::Status GlobalAllocator::Configure(const GlobalAllocatorOptions& options) {
@@ -186,6 +215,14 @@ AllocBackend GlobalAllocator::CurrentBackend() {
   return GlobalOptions().backend;
 }
 
+const char* GlobalAllocator::BackendDisplayName(AllocBackend backend) {
+  return BackendDisplayNameImpl(backend);
+}
+
+bool GlobalAllocator::IsBackendEnabled(AllocBackend backend) {
+  return IsBackendEnabledImpl(backend);
+}
+
 const char* GlobalAllocator::CurrentBackendName() {
   std::lock_guard<std::mutex> lock(ConfigureMu());
   return EnsureAllocatorLocked()->BackendName();
@@ -210,3 +247,4 @@ void GlobalAllocator::ResetCurrentStats() {
 
 }  // namespace memory
 }  // namespace corekit
+
