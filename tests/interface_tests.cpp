@@ -49,6 +49,25 @@ bool TestFactoryLifecycle() {
   return true;
 }
 
+bool TestLogMacroUsability() {
+  corekit::log::ILogManager* logger = corekit_create_log_manager();
+  if (logger == NULL) return false;
+
+  corekit::api::Status init = logger->Init("interface_tests", "");
+  if (!init.ok()) {
+    corekit_destroy_log_manager(logger);
+    return false;
+  }
+
+  COREKIT_LOG_INFO(logger, "macro-info");
+  COREKIT_LOG_WARNING_S(logger, "macro-warning value=" << 7);
+  COREKIT_LOG_ERROR(logger, "macro-error");
+
+  corekit::api::Status shutdown = logger->Shutdown();
+  corekit_destroy_log_manager(logger);
+  return shutdown.ok();
+}
+
 bool TestAllocatorBasic() {
   corekit::memory::IAllocator* allocator = corekit_create_allocator();
   if (allocator == NULL) return false;
@@ -960,6 +979,7 @@ int main() {
   const TestCase tests[] = {
       {"api_version", TestApiVersion},
       {"factory_lifecycle", TestFactoryLifecycle},
+      {"log_macro_usability", TestLogMacroUsability},
       {"allocator_basic", TestAllocatorBasic},
       {"allocator_invalid_args_and_hex_code", TestAllocatorInvalidArgsAndHexCode},
       {"executor_submit_wait", TestExecutorSubmitAndWait},

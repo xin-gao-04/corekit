@@ -10,6 +10,7 @@
 #include "corekit/ipc/i_channel.hpp"
 #include "corekit/json/i_json.hpp"
 #include "corekit/log/ilog_manager.hpp"
+#include "corekit/log/log_macros.hpp"
 #include "corekit/log/log_types.hpp"
 #include "corekit/memory/i_global_allocator.hpp"
 #include "corekit/memory/iallocator.hpp"

@@ -59,7 +59,8 @@ ctest --test-dir build_vs2015_local -C Release --output-on-failure
 corekit::log::ILogManager* logger = corekit_create_log_manager();
 auto st = logger->Init("my_app", "config/logging.conf");
 if (st.ok()) {
-  logger->Log(corekit::log::LogSeverity::kInfo, "hello");
+  COREKIT_LOG_INFO(logger, "hello");
+  COREKIT_LOG_WARNING_S(logger, "user_id=" << 42 << " latency_ms=" << 13);
   logger->Shutdown();
 }
 corekit_destroy_log_manager(logger);
