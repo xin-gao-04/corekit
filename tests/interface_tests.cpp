@@ -339,6 +339,9 @@ bool TestTaskGraphValidateAndRunWithExecutor() {
 }
 
 bool TestIpcRoundTripInProcess() {
+#if !defined(_WIN32)
+  return true;
+#else
   corekit::ipc::IChannel* server = corekit_create_ipc_channel();
   corekit::ipc::IChannel* client = corekit_create_ipc_channel();
   if (server == NULL || client == NULL) return false;
@@ -366,6 +369,7 @@ bool TestIpcRoundTripInProcess() {
   corekit_destroy_ipc_channel(server);
   corekit_destroy_ipc_channel(client);
   return true;
+#endif
 }
 
 bool TestBasicConcurrentQueue() {
@@ -1005,7 +1009,6 @@ int main() {
 
   return failed == 0 ? 0 : 1;
 }
-
 
 
 

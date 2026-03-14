@@ -140,25 +140,25 @@ api::Result<TaskId> ThreadPoolExecutor::SubmitEx(std::function<void()> fn,
   }
 
   api::Status st = Enqueue([this, id, fn, state, key_mu]() {
-    bool canceled = false;
-    {
-      std::lock_guard<std::mutex> lock(mu_);
-      state->started = true;
-      canceled = state->canceled;
-    }
-
-    if (canceled) {
-      MarkTaskDone(id, false, false);
-      return;
-    }
-
     try {
+      std::unique_lock<std::mutex> serial_lock;
       if (key_mu) {
-        std::lock_guard<std::mutex> serial_lock(*key_mu);
-        fn();
-      } else {
-        fn();
+        serial_lock = std::unique_lock<std::mutex>(*key_mu);
       }
+
+      bool canceled = false;
+      {
+        std::lock_guard<std::mutex> lock(mu_);
+        canceled = state->canceled;
+        state->started = true;
+      }
+
+      if (canceled) {
+        MarkTaskDone(id, false, false);
+        return;
+      }
+
+      fn();
       MarkTaskDone(id, true, false);
     } catch (...) {
       MarkTaskDone(id, false, true);

@@ -17,7 +17,7 @@ set(COREKIT_THIRDPARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3party" CACHE PATH
     "Local third-party root directory")
 option(COREKIT_USE_LOCAL_THIRDPARTY_ONLY
        "Require all dependencies from local 3party directory"
-       ON)
+       OFF)
 option(COREKIT_BUNDLE_DEPS_STATIC
        "Build glog from source as static lib and link it into shared corekit"
        ON)
@@ -30,10 +30,6 @@ set(COREKIT_GLOG_DIR "${COREKIT_THIRDPARTY_DIR}/glog")
 set(COREKIT_MIMALLOC_DIR "${COREKIT_THIRDPARTY_DIR}/mimalloc")
 set(COREKIT_ONETBB_DIR "${COREKIT_THIRDPARTY_DIR}/oneTBB")
 
-if (NOT EXISTS "${COREKIT_GLOG_DIR}/CMakeLists.txt")
-  message(FATAL_ERROR "Missing local dependency: ${COREKIT_GLOG_DIR}")
-endif()
-
 if (COREKIT_BUNDLE_DEPS_STATIC)
   if (NOT BUILD_SHARED_LIBS)
     message(FATAL_ERROR
@@ -41,17 +37,48 @@ if (COREKIT_BUNDLE_DEPS_STATIC)
   endif()
 endif()
 
-# glog: always build from local third-party source.
-set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
-set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-set(_corekit_prev_build_shared_libs ${BUILD_SHARED_LIBS})
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-add_subdirectory("${COREKIT_GLOG_DIR}" "${CMAKE_BINARY_DIR}/3party/glog" EXCLUDE_FROM_ALL)
-set(BUILD_SHARED_LIBS ${_corekit_prev_build_shared_libs} CACHE BOOL "" FORCE)
-
-if (NOT TARGET glog::glog AND TARGET glog)
-  add_library(glog::glog ALIAS glog)
+set(_corekit_have_local_glog OFF)
+if (EXISTS "${COREKIT_GLOG_DIR}/CMakeLists.txt")
+  set(_corekit_have_local_glog ON)
 endif()
+
+if (_corekit_have_local_glog)
+  # Prefer vendored glog when it is present.
+  set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
+  set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+  set(_corekit_prev_build_shared_libs ${BUILD_SHARED_LIBS})
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  add_subdirectory("${COREKIT_GLOG_DIR}" "${CMAKE_BINARY_DIR}/3party/glog" EXCLUDE_FROM_ALL)
+  set(BUILD_SHARED_LIBS ${_corekit_prev_build_shared_libs} CACHE BOOL "" FORCE)
+
+  if (NOT TARGET glog::glog AND TARGET glog)
+    add_library(glog::glog ALIAS glog)
+  endif()
+elseif (COREKIT_USE_LOCAL_THIRDPARTY_ONLY)
+  message(FATAL_ERROR "Missing local dependency: ${COREKIT_GLOG_DIR}")
+else()
+  find_package(glog CONFIG QUIET)
+  if (NOT TARGET glog::glog)
+    find_package(PkgConfig QUIET)
+    if (PkgConfig_FOUND)
+      pkg_check_modules(GLOG QUIET IMPORTED_TARGET libglog)
+      if (NOT TARGET PkgConfig::GLOG)
+        pkg_check_modules(GLOG QUIET IMPORTED_TARGET libglog glog)
+      endif()
+      if (TARGET PkgConfig::GLOG)
+        add_library(glog::glog INTERFACE IMPORTED)
+        target_link_libraries(glog::glog INTERFACE PkgConfig::GLOG)
+      endif()
+    endif()
+  endif()
+  if (NOT TARGET glog::glog)
+    message(FATAL_ERROR
+            "glog was not found. Provide 3party/glog, install a system glog package, "
+            "or set COREKIT_USE_LOCAL_THIRDPARTY_ONLY=ON only when vendored sources exist.")
+  endif()
+endif()
+
+find_package(Threads REQUIRED)
 
 set(COREKIT_MEMORY_SOURCES
     src/memory/global_allocator.cpp
@@ -155,6 +182,7 @@ endif()
 target_link_libraries(corekit
     PRIVATE
         glog::glog
+        Threads::Threads
         ${COREKIT_EXTRA_LIBS}
 )
 
@@ -232,5 +260,4 @@ if (COREKIT_BUILD_EXAMPLES)
   configure_file(config/logging.conf ${CMAKE_CURRENT_BINARY_DIR}/config/logging.conf COPYONLY)
   configure_file(config/corekit.json ${CMAKE_CURRENT_BINARY_DIR}/config/corekit.json COPYONLY)
 endif()
-
 

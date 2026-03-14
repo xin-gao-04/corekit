@@ -3,5 +3,7 @@ build_new/
 build_core/
 build_clean/
 build_*/
+build.codex/
 logs/
 corekit_mem_*.json
+.claude/
