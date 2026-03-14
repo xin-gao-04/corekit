@@ -130,7 +130,6 @@ endif()
 add_library(corekit
     src/api/status.cpp
     src/log_manager.cpp
-    src/log/log_manager_adapter.cpp
     src/ipc/shared_memory_channel.cpp
     src/json/json_codec.cpp
     ${COREKIT_MEMORY_SOURCES}
@@ -162,8 +161,14 @@ target_link_libraries(corekit
 add_library(corekit::corekit ALIAS corekit)
 
 if (COREKIT_BUILD_EXAMPLES)
-  add_executable(corekit_example examples/main.cpp)
-  target_link_libraries(corekit_example PRIVATE corekit)
+  add_executable(logging_demo examples/logging_demo.cpp)
+  target_link_libraries(logging_demo PRIVATE corekit)
+
+  add_executable(memory_demo examples/memory_demo.cpp)
+  target_link_libraries(memory_demo PRIVATE corekit)
+
+  add_executable(task_demo examples/task_demo.cpp)
+  target_link_libraries(task_demo PRIVATE corekit)
 
   add_executable(containers_demo examples/containers_demo.cpp)
   target_link_libraries(containers_demo PRIVATE corekit)
@@ -210,9 +215,6 @@ install(FILES
 
 if (COREKIT_BUILD_TESTS)
   enable_testing()
-  add_executable(corekit_legacy_tests tests/corekit_legacy_tests.cpp)
-  target_link_libraries(corekit_legacy_tests PRIVATE corekit)
-  add_test(NAME corekit_legacy_tests COMMAND corekit_legacy_tests)
 
   add_executable(interface_tests tests/interface_tests.cpp)
   target_link_libraries(interface_tests PRIVATE corekit)
