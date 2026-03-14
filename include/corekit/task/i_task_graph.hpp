@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 #include "corekit/api/status.hpp"
 #include "corekit/api/version.hpp"
@@ -71,8 +72,8 @@ class ITaskGraph {
 
   // 新增一个任务节点，返回节点 ID（可用于 AddDependency）。
   // options 为可选配置（名称、优先级）；缺省时使用默认值。
-  // 返回：kOk + TaskId = 成功；kInvalidArgument = 参数非法。
-  virtual api::Result<TaskId> AddTask(void (*fn)(void*), void* user_data,
+  // 返回：kOk + TaskId = 成功；kInvalidArgument = 参数非法（fn 为空）。
+  virtual api::Result<TaskId> AddTask(std::function<void()> fn,
                                       const GraphTaskOptions& options = GraphTaskOptions()) = 0;
 
   // 新增依赖关系：before_task_id 执行完成后才会执行 after_task_id。

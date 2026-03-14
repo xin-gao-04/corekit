@@ -18,17 +18,16 @@ void SimpleTaskGraph::Release() { delete this; }
 
 // ── AddTask / AddDependency ────────────────────────────────────────────────────
 
-api::Result<TaskId> SimpleTaskGraph::AddTask(void (*fn)(void*), void* user_data,
+api::Result<TaskId> SimpleTaskGraph::AddTask(std::function<void()> fn,
                                               const GraphTaskOptions& options) {
-  if (fn == NULL) {
+  if (!fn) {
     return api::Result<TaskId>(
         CK_STATUS(api::StatusCode::kInvalidArgument, "fn is null"));
   }
   const TaskId id = next_id_++;
   TaskNode node;
   node.id = id;
-  node.fn = fn;
-  node.user_data = user_data;
+  node.fn = std::move(fn);
   node.options = options;
   if (options.name != NULL) node.name = options.name;
   nodes_[id] = node;
@@ -193,7 +192,7 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunInternal(IExecutor* executor,
               CK_STATUS(api::StatusCode::kInternalError, "node missing during execution"));
         }
         try {
-          nit->second.fn(nit->second.user_data);
+          nit->second.fn();
           ++stats.succeeded;
         } catch (...) {
           ++stats.failed;
@@ -203,8 +202,7 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunInternal(IExecutor* executor,
     } else {
       // 通过执行器并行执行当前层
       struct NodeCtx {
-        void (*fn)(void*);
-        void* user_data;
+        std::function<void()> fn;
         bool failed;
       };
       std::vector<NodeCtx> ctx(level.size());
@@ -218,7 +216,6 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunInternal(IExecutor* executor,
               CK_STATUS(api::StatusCode::kInternalError, "node missing during execution"));
         }
         ctx[i].fn = nit->second.fn;
-        ctx[i].user_data = nit->second.user_data;
         ctx[i].failed = false;
 
         NodeCtx* ctxp = &ctx[i];
@@ -228,7 +225,7 @@ api::Result<GraphRunStats> SimpleTaskGraph::RunInternal(IExecutor* executor,
         api::Result<TaskId> sub = executor->SubmitEx(
             [ctxp]() {
               try {
-                ctxp->fn(ctxp->user_data);
+                ctxp->fn();
               } catch (...) {
                 ctxp->failed = true;
               }

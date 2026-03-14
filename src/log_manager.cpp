@@ -1,4 +1,4 @@
-#include "log/log_manager_legacy_internal.hpp"
+#include "log/glog_log_manager.hpp"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -30,8 +30,13 @@
 #include <sstream>
 #include <thread>
 
-namespace corekit_legacy {
+#include "corekit/api/version.hpp"
+
+namespace corekit {
+namespace log {
 namespace {
+
+// ── 进程级单例状态 ──────────────────────────────────────────────────────────
 
 std::mutex& GlobalMutex() {
   static std::mutex m;
@@ -53,11 +58,6 @@ std::string& GlobalBaseDir() {
   return dir;
 }
 
-std::string& GlobalOutputDir() {
-  static std::string dir;
-  return dir;
-}
-
 std::unique_ptr<google::LogSink>& GlobalSink() {
   static std::unique_ptr<google::LogSink> sink;
   return sink;
@@ -72,6 +72,8 @@ bool& GlobalFailureHandlerInstalled() {
   static bool installed = false;
   return installed;
 }
+
+// ── 路径工具 ─────────────────────────────────────────────────────────────────
 
 bool IsPathSeparator(char c) { return c == '/' || c == '\\'; }
 
@@ -165,6 +167,8 @@ int ClampInt(int value, int low, int high) {
   return value;
 }
 
+// ── 配置文件解析 ──────────────────────────────────────────────────────────────
+
 std::string Trim(const std::string& s) {
   const auto start = s.find_first_not_of(" \t\r\n");
   if (start == std::string::npos) return "";
@@ -180,24 +184,13 @@ std::string ToLower(std::string s) {
 
 bool ParseBool(const std::string& value, bool* out) {
   const std::string v = ToLower(Trim(value));
-  if (v == "1" || v == "true" || v == "yes" || v == "on") {
-    *out = true;
-    return true;
-  }
-  if (v == "0" || v == "false" || v == "no" || v == "off") {
-    *out = false;
-    return true;
-  }
+  if (v == "1" || v == "true" || v == "yes" || v == "on") { *out = true; return true; }
+  if (v == "0" || v == "false" || v == "no" || v == "off") { *out = false; return true; }
   return false;
 }
 
 bool ParseInt(const std::string& value, int* out) {
-  try {
-    *out = std::stoi(Trim(value));
-    return true;
-  } catch (...) {
-    return false;
-  }
+  try { *out = std::stoi(Trim(value)); return true; } catch (...) { return false; }
 }
 
 int LevelFromText(const std::string& value) {
@@ -206,20 +199,18 @@ int LevelFromText(const std::string& value) {
   if (v == "warning" || v == "warn") return google::GLOG_WARNING;
   if (v == "error") return google::GLOG_ERROR;
   if (v == "fatal") return google::GLOG_FATAL;
-  // fall back to integer parsing; invalid values handled later.
   int parsed = 0;
   if (ParseInt(v, &parsed)) return parsed;
   return google::GLOG_INFO;
 }
 
+// 从 INI 格式配置文件解析 LoggingOptions（仅识别公开字段）。
 LoggingOptions ParseConfig(std::istream& input, bool* ok) {
   LoggingOptions options;
   std::string line;
-  int lineno = 0;
   bool success = true;
 
   while (std::getline(input, line)) {
-    ++lineno;
     std::string trimmed = Trim(line);
     if (trimmed.empty() || trimmed[0] == '#' || trimmed.rfind("//", 0) == 0) continue;
 
@@ -228,6 +219,8 @@ LoggingOptions ParseConfig(std::istream& input, bool* ok) {
 
     const std::string key = ToLower(Trim(trimmed.substr(0, sep)));
     std::string value = Trim(trimmed.substr(sep + 1));
+
+    // 去除行尾注释
     auto cut_comment = [](std::string& v) {
       const size_t hash = v.find('#');
       const size_t slash = v.find("//");
@@ -243,126 +236,44 @@ LoggingOptions ParseConfig(std::istream& input, bool* ok) {
 
     if (key == "log_dir") {
       options.log_dir = value;
-    } else if (key == "bootstrap_stderr") {
-      if (ParseBool(value, &bool_value)) {
-        options.bootstrap_stderr = bool_value;
-      } else {
-        success = false;
-      }
-    } else if (key == "install_failure_signal_handler" || key == "crash_stacktrace") {
-      if (ParseBool(value, &bool_value)) {
-        options.install_failure_signal_handler = bool_value;
-      } else {
-        success = false;
-      }
-    } else if (key == "symbolize_stacktrace") {
-      if (ParseBool(value, &bool_value)) {
-        options.symbolize_stacktrace = bool_value;
-      } else {
-        success = false;
-      }
-    } else if (key == "glog_file_output") {
-      if (ParseBool(value, &bool_value)) {
-        options.glog_file_output = bool_value;
-      } else {
-        success = false;
-      }
-    } else if (key == "logtostderr") {
-      if (ParseBool(value, &bool_value)) {
-        options.logtostderr = bool_value;
-      } else {
-        success = false;
-      }
     } else if (key == "session_subdir") {
-      if (ParseBool(value, &bool_value)) {
-        options.session_subdir = bool_value;
-      } else {
-        success = false;
-      }
-    } else if (key == "alsologtostderr") {
-      if (ParseBool(value, &bool_value)) {
-        options.alsologtostderr = bool_value;
-      } else {
-        success = false;
-      }
-    } else if (key == "colorlogtostderr") {
-      if (ParseBool(value, &bool_value)) {
-        options.colorlogtostderr = bool_value;
-      } else {
-        success = false;
-      }
-    } else if (key == "log_prefix") {
-      if (ParseBool(value, &bool_value)) {
-        options.log_prefix = bool_value;
-      } else {
-        success = false;
-      }
+      if (ParseBool(value, &bool_value)) options.session_subdir = bool_value;
+      else success = false;
     } else if (key == "simple_format") {
-      if (ParseBool(value, &bool_value)) {
-        options.simple_format = bool_value;
-      } else {
-        success = false;
-      }
+      if (ParseBool(value, &bool_value)) options.simple_format = bool_value;
+      else success = false;
     } else if (key == "json_format") {
-      if (ParseBool(value, &bool_value)) {
-        options.json_format = bool_value;
-      } else {
-        success = false;
-      }
+      if (ParseBool(value, &bool_value)) options.json_format = bool_value;
+      else success = false;
     } else if (key == "async_sink") {
-      if (ParseBool(value, &bool_value)) {
-        options.async_sink = bool_value;
-      } else {
-        success = false;
-      }
+      if (ParseBool(value, &bool_value)) options.async_sink = bool_value;
+      else success = false;
     } else if (key == "async_queue_size") {
-      if (ParseInt(value, &int_value) && int_value > 0) {
-        options.async_queue_size = int_value;
-      } else {
-        success = false;
-      }
+      if (ParseInt(value, &int_value) && int_value > 0) options.async_queue_size = int_value;
+      else success = false;
     } else if (key == "async_drop_when_full") {
-      if (ParseBool(value, &bool_value)) {
-        options.async_drop_when_full = bool_value;
-      } else {
-        success = false;
-      }
+      if (ParseBool(value, &bool_value)) options.async_drop_when_full = bool_value;
+      else success = false;
+    } else if (key == "logtostderr") {
+      if (ParseBool(value, &bool_value)) options.logtostderr = bool_value;
+      else success = false;
     } else if (key == "minloglevel") {
       options.min_log_level = LevelFromText(value);
-    } else if (key == "stderrthreshold") {
-      options.stderr_threshold = LevelFromText(value);
-    } else if (key == "v" || key == "verbosity") {
-      if (ParseInt(value, &int_value)) {
-        options.verbosity = int_value;
-      } else {
-        success = false;
-      }
     } else if (key == "max_log_size") {
-      if (ParseInt(value, &int_value)) {
-        options.max_log_size_mb = int_value;
-      } else {
-        success = false;
-      }
-    } else if (key == "logbufsecs") {
-      if (ParseInt(value, &int_value)) {
-        options.logbufsecs = int_value;
-      } else {
-        success = false;
-      }
+      if (ParseInt(value, &int_value)) options.max_log_size_mb = int_value;
+      else success = false;
     } else if (key == "stop_logging_if_full_disk") {
-      if (ParseBool(value, &bool_value)) {
-        options.stop_logging_if_full_disk = bool_value;
-      } else {
-        success = false;
-      }
-    } else {
-      // Unknown keys are ignored but we keep parsing.
+      if (ParseBool(value, &bool_value)) options.stop_logging_if_full_disk = bool_value;
+      else success = false;
     }
+    // 未识别的键直接忽略，保持宽容解析。
   }
 
   if (ok) *ok = success;
   return options;
 }
+
+// ── 时间戳工具 ────────────────────────────────────────────────────────────────
 
 std::tm LocalTime(std::time_t t) {
   std::tm tm{};
@@ -380,8 +291,9 @@ std::string TimestampDir() {
   const auto t = system_clock::to_time_t(now);
   const std::tm tm = LocalTime(t);
   char buf[32];
-  std::snprintf(buf, sizeof(buf), "%04d%02d%02d-%02d%02d%02d", tm.tm_year + 1900,
-                tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+  std::snprintf(buf, sizeof(buf), "%04d%02d%02d-%02d%02d%02d",
+                tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                tm.tm_hour, tm.tm_min, tm.tm_sec);
   return std::string(buf);
 }
 
@@ -393,35 +305,22 @@ std::string TimestampPrefix() {
   const auto ns = duration_cast<nanoseconds>(now.time_since_epoch()).count() % 1000000000LL;
   char buf[64];
   std::snprintf(buf, sizeof(buf), "%04d%02d%02d %02d:%02d:%02d.%09lld",
-                tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
-                tm.tm_sec, static_cast<long long>(ns));
+                tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                tm.tm_hour, tm.tm_min, tm.tm_sec, static_cast<long long>(ns));
   return std::string(buf);
 }
 
-char LevelChar(google::LogSeverity severity) {
-  const char levels[] = {'I', 'W', 'E', 'F'};
-  return levels[ClampInt(static_cast<int>(severity), 0, 3)];
-}
+// ── JSON 转义 ─────────────────────────────────────────────────────────────────
 
 std::string JsonEscape(const std::string& input) {
   std::ostringstream out;
   for (unsigned char c : input) {
     switch (c) {
-      case '\\':
-        out << "\\\\";
-        break;
-      case '"':
-        out << "\\\"";
-        break;
-      case '\n':
-        out << "\\n";
-        break;
-      case '\r':
-        out << "\\r";
-        break;
-      case '\t':
-        out << "\\t";
-        break;
+      case '\\': out << "\\\\"; break;
+      case '"':  out << "\\\""; break;
+      case '\n': out << "\\n";  break;
+      case '\r': out << "\\r";  break;
+      case '\t': out << "\\t";  break;
       default:
         if (c < 0x20) {
           out << "\\u" << std::hex << std::setw(4) << std::setfill('0')
@@ -435,12 +334,19 @@ std::string JsonEscape(const std::string& input) {
   return out.str();
 }
 
+char LevelChar(google::LogSeverity severity) {
+  const char levels[] = {'I', 'W', 'E', 'F'};
+  return levels[ClampInt(static_cast<int>(severity), 0, 3)];
+}
+
+// ── 自定义格式化 Sink ─────────────────────────────────────────────────────────
+
 class FormattedSink : public google::LogSink {
  public:
   enum class Mode { kSimple, kJson };
 
-  FormattedSink(const std::string& file_path, Mode mode, bool async_mode, int queue_size,
-                bool drop_when_full)
+  FormattedSink(const std::string& file_path, Mode mode, bool async_mode,
+                int queue_size, bool drop_when_full)
       : stream_(file_path, std::ios::app),
         mode_(mode),
         async_mode_(async_mode),
@@ -466,10 +372,9 @@ class FormattedSink : public google::LogSink {
             const std::tm*, const char* message, size_t) override {
     if (!stream_.is_open()) return;
     std::string msg = message ? message : "";
-    while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r')) {
-      msg.pop_back();
-    }
+    while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r')) msg.pop_back();
     const std::string line = FormatLine(severity, msg);
+
     if (!async_mode_) {
       std::lock_guard<std::mutex> lock(stream_mu_);
       stream_ << line << '\n';
@@ -479,10 +384,7 @@ class FormattedSink : public google::LogSink {
 
     std::unique_lock<std::mutex> lock(queue_mu_);
     if (drop_when_full_) {
-      if (queue_.size() >= static_cast<size_t>(queue_size_)) {
-        ++dropped_count_;
-        return;
-      }
+      if (queue_.size() >= static_cast<size_t>(queue_size_)) { ++dropped_count_; return; }
     } else {
       queue_space_cv_.wait(lock, [this] {
         return stopping_ || queue_.size() < static_cast<size_t>(queue_size_);
@@ -514,15 +416,11 @@ class FormattedSink : public google::LogSink {
       {
         std::unique_lock<std::mutex> lock(queue_mu_);
         queue_cv_.wait(lock, [this] { return stopping_ || !queue_.empty(); });
-        if (queue_.empty()) {
-          if (stopping_) break;
-          continue;
-        }
+        if (queue_.empty()) { if (stopping_) break; continue; }
         line = std::move(queue_.front());
         queue_.pop_front();
       }
       queue_space_cv_.notify_one();
-
       std::lock_guard<std::mutex> lock(stream_mu_);
       stream_ << line << '\n';
       stream_.flush();
@@ -541,7 +439,6 @@ class FormattedSink : public google::LogSink {
   bool async_mode_;
   int queue_size_;
   bool drop_when_full_;
-
   std::mutex stream_mu_;
   std::mutex queue_mu_;
   std::condition_variable queue_cv_;
@@ -552,144 +449,65 @@ class FormattedSink : public google::LogSink {
   size_t dropped_count_ = 0;
 };
 
-}  // namespace
+// ── 配置应用 ──────────────────────────────────────────────────────────────────
 
-bool LogManager::Init(const std::string& app_name, const std::string& config_path) {
-  std::lock_guard<std::mutex> lock(GlobalMutex());
-  if (GlobalInitialized()) return true;
-
-  bool ok = true;
-  const LoggingOptions options = LoadFromFile(config_path, &ok);
-  if (!ok) return false;
-
-  if (options.bootstrap_stderr) {
-    // Ensure boot diagnostics are visible even before log_dir and sinks are applied.
-    FLAGS_logtostderr = true;
-    FLAGS_alsologtostderr = false;
-  }
-  const std::string sanitized_app_name =
-      BaseName(app_name).empty() ? "corekit" : BaseName(app_name);
-  google::InitGoogleLogging(sanitized_app_name.c_str());
-
-  if (!ApplyOptions(options)) ok = false;
-  if (!ok) {
-    if (GlobalSink()) {
-      google::RemoveLogSink(GlobalSink().get());
-      GlobalSink().reset();
-    }
-    GlobalSessionDir().clear();
-    GlobalBaseDir().clear();
-    GlobalOutputDir().clear();
-    google::ShutdownGoogleLogging();
-    GlobalInitialized() = false;
-    return false;
-  }
-
-  GlobalInitialized() = true;
-  return true;
-}
-
-bool LogManager::Reload(const std::string& config_path) {
-  std::lock_guard<std::mutex> lock(GlobalMutex());
-  if (!GlobalInitialized()) return false;
-
-  bool ok = true;
-  const LoggingOptions options = LoadFromFile(config_path, &ok);
-  if (!ok) return false;
-  return ApplyOptions(options);
-}
-
-LoggingOptions LogManager::CurrentOptions() {
-  std::lock_guard<std::mutex> lock(GlobalMutex());
-  return GlobalOptions();
-}
-
-void LogManager::Shutdown() {
-  std::lock_guard<std::mutex> lock(GlobalMutex());
-  if (!GlobalInitialized()) return;
-  if (GlobalSink()) {
-    google::RemoveLogSink(GlobalSink().get());
-    GlobalSink().reset();
-  }
-  google::ShutdownGoogleLogging();
-  GlobalSessionDir().clear();
-  GlobalBaseDir().clear();
-  GlobalOutputDir().clear();
-  GlobalInitialized() = false;
-}
-
-void LogManager::Log(LogSeverity severity, const std::string& message) {
-  const google::LogSeverity glog_severity =
-      static_cast<google::LogSeverity>(ClampInt(static_cast<int>(severity), 0, 3));
-  google::LogMessage(__FILE__, __LINE__, glog_severity).stream() << message;
-}
-
-bool LogManager::ApplyOptions(const LoggingOptions& options) {
-  // Apply glog flags directly.
+bool ApplyOptions(const LoggingOptions& options) {
+  // 目录管理
+  std::string output_dir;
   if (!options.log_dir.empty()) {
-    const std::string base_str = options.log_dir;
-    std::string target = base_str;
+    std::string target = options.log_dir;
     if (options.session_subdir) {
-      if (GlobalSessionDir().empty() || GlobalBaseDir() != base_str) {
-        target = JoinPath(base_str, TimestampDir());
+      if (GlobalSessionDir().empty() || GlobalBaseDir() != options.log_dir) {
+        target = JoinPath(options.log_dir, TimestampDir());
         if (!CreateDirectories(target)) return false;
         GlobalSessionDir() = target;
-        GlobalBaseDir() = base_str;
+        GlobalBaseDir() = options.log_dir;
       } else {
         target = GlobalSessionDir();
       }
     } else {
       GlobalSessionDir().clear();
-      GlobalBaseDir() = base_str;
+      GlobalBaseDir() = options.log_dir;
     }
     if (!CreateDirectories(target)) return false;
-    GlobalOutputDir() = target;
+    output_dir = target;
   } else {
     GlobalSessionDir().clear();
     GlobalBaseDir().clear();
-    GlobalOutputDir().clear();
   }
 
-  if (options.glog_file_output && !GlobalOutputDir().empty()) {
-    FLAGS_log_dir = GlobalOutputDir();
-    FLAGS_timestamp_in_logfile_name = false;
-  } else {
-    FLAGS_log_dir.clear();
-  }
-
-  // Disable glog file output by default. Force stderr to avoid fallback file creation.
-  const bool effective_logtostderr = options.glog_file_output ? options.logtostderr : true;
-  const bool effective_alsologtostderr =
-      options.glog_file_output ? options.alsologtostderr : false;
-
-  FLAGS_logtostderr = effective_logtostderr;
-  FLAGS_alsologtostderr = effective_alsologtostderr;
-  FLAGS_colorlogtostderr = options.colorlogtostderr;
-  FLAGS_log_prefix = options.log_prefix;
+  // glog 始终不使用原生文件输出，由自定义 Sink 或 stderr 处理
+  FLAGS_log_dir.clear();
+  FLAGS_logtostderr = options.log_dir.empty() ? true : options.logtostderr;
+  FLAGS_alsologtostderr = false;
+  FLAGS_colorlogtostderr = true;
+  FLAGS_log_prefix = true;
   FLAGS_minloglevel = options.min_log_level;
-  FLAGS_stderrthreshold = options.stderr_threshold;
-  FLAGS_v = options.verbosity;
+  FLAGS_stderrthreshold = google::GLOG_ERROR;
+  FLAGS_v = 0;
   FLAGS_max_log_size = static_cast<google::uint32>(std::max(0, options.max_log_size_mb));
-  FLAGS_logbufsecs = options.logbufsecs;
+  FLAGS_logbufsecs = 30;
   FLAGS_stop_logging_if_full_disk = options.stop_logging_if_full_disk;
-  if (options.install_failure_signal_handler && !GlobalFailureHandlerInstalled()) {
+
+  if (!GlobalFailureHandlerInstalled()) {
     google::InstallFailureSignalHandler();
     GlobalFailureHandlerInstalled() = true;
   }
 
-  // Rebuild custom sink each apply so reload can switch mode/path safely.
+  // 重建自定义 Sink（支持 Reload 时切换格式/路径）
   if (GlobalSink()) {
     google::RemoveLogSink(GlobalSink().get());
     GlobalSink().reset();
   }
 
   const bool custom_format = options.simple_format || options.json_format;
-  if (custom_format) {
+  if (custom_format && !output_dir.empty()) {
     const bool use_json = options.json_format;
-    const std::string base = GlobalOutputDir().empty() ? "." : GlobalOutputDir();
-    const std::string sink_file = JoinPath(base, use_json ? "app.jsonl" : "app.log");
+    const std::string sink_file =
+        JoinPath(output_dir, use_json ? "app.jsonl" : "app.log");
     GlobalSink().reset(new FormattedSink(
-        sink_file, use_json ? FormattedSink::Mode::kJson : FormattedSink::Mode::kSimple,
+        sink_file,
+        use_json ? FormattedSink::Mode::kJson : FormattedSink::Mode::kSimple,
         options.async_sink, options.async_queue_size, options.async_drop_when_full));
     google::AddLogSink(GlobalSink().get());
     FLAGS_log_prefix = false;
@@ -699,22 +517,98 @@ bool LogManager::ApplyOptions(const LoggingOptions& options) {
   return true;
 }
 
-LoggingOptions LogManager::LoadFromFile(const std::string& path, bool* ok) {
-  if (path.empty()) {
-    if (ok) *ok = true;
-    return LoggingOptions{};
-  }
-
+LoggingOptions LoadFromFile(const std::string& path, bool* ok) {
+  if (path.empty()) { if (ok) *ok = true; return LoggingOptions{}; }
   std::ifstream input(path);
-  if (!input.is_open()) {
-    if (ok) *ok = false;
-    return LoggingOptions{};
-  }
-
+  if (!input.is_open()) { if (ok) *ok = false; return LoggingOptions{}; }
   return ParseConfig(input, ok);
 }
 
-}  // namespace corekit_legacy
+}  // namespace
 
+// ── GlogLogManager 实现 ───────────────────────────────────────────────────────
 
+const char* GlogLogManager::Name() const { return "corekit.log.glog"; }
 
+std::uint32_t GlogLogManager::ApiVersion() const { return api::kApiVersion; }
+
+void GlogLogManager::Release() { delete this; }
+
+api::Status GlogLogManager::Init(const std::string& app_name,
+                                  const std::string& config_path) {
+  if (app_name.empty()) {
+    return api::Status(api::StatusCode::kInvalidArgument, "app_name is empty");
+  }
+  std::lock_guard<std::mutex> lock(GlobalMutex());
+  if (GlobalInitialized()) return api::Status::Ok();
+
+  // 先让 glog 输出到 stderr，避免初始化阶段就创建文件
+  FLAGS_logtostderr = true;
+  const std::string app = BaseName(app_name).empty() ? "corekit" : BaseName(app_name);
+  google::InitGoogleLogging(app.c_str());
+
+  bool ok = true;
+  const LoggingOptions options = LoadFromFile(config_path, &ok);
+  if (!ok) {
+    google::ShutdownGoogleLogging();
+    return api::Status(api::StatusCode::kInternalError,
+                       "failed to parse config: " + config_path);
+  }
+
+  if (!ApplyOptions(options)) {
+    if (GlobalSink()) { google::RemoveLogSink(GlobalSink().get()); GlobalSink().reset(); }
+    GlobalSessionDir().clear();
+    GlobalBaseDir().clear();
+    google::ShutdownGoogleLogging();
+    return api::Status(api::StatusCode::kInternalError, "failed to apply logging options");
+  }
+
+  GlobalInitialized() = true;
+  return api::Status::Ok();
+}
+
+api::Status GlogLogManager::Reload(const std::string& config_path) {
+  if (config_path.empty()) {
+    return api::Status(api::StatusCode::kInvalidArgument, "config_path is empty");
+  }
+  std::lock_guard<std::mutex> lock(GlobalMutex());
+  if (!GlobalInitialized()) {
+    return api::Status(api::StatusCode::kFailedPrecondition, "not initialized");
+  }
+  bool ok = true;
+  const LoggingOptions options = LoadFromFile(config_path, &ok);
+  if (!ok) {
+    return api::Status(api::StatusCode::kInternalError,
+                       "failed to parse config: " + config_path);
+  }
+  if (!ApplyOptions(options)) {
+    return api::Status(api::StatusCode::kInternalError, "failed to apply logging options");
+  }
+  return api::Status::Ok();
+}
+
+api::Status GlogLogManager::Log(LogSeverity severity, const std::string& message) {
+  const google::LogSeverity gs =
+      static_cast<google::LogSeverity>(ClampInt(static_cast<int>(severity), 0, 3));
+  google::LogMessage(__FILE__, __LINE__, gs).stream() << message;
+  return api::Status::Ok();
+}
+
+api::Result<LoggingOptions> GlogLogManager::CurrentOptions() const {
+  std::lock_guard<std::mutex> lock(GlobalMutex());
+  return api::Result<LoggingOptions>(GlobalOptions());
+}
+
+api::Status GlogLogManager::Shutdown() {
+  std::lock_guard<std::mutex> lock(GlobalMutex());
+  if (!GlobalInitialized()) return api::Status::Ok();
+  if (GlobalSink()) { google::RemoveLogSink(GlobalSink().get()); GlobalSink().reset(); }
+  google::ShutdownGoogleLogging();
+  GlobalSessionDir().clear();
+  GlobalBaseDir().clear();
+  GlobalInitialized() = false;
+  return api::Status::Ok();
+}
+
+}  // namespace log
+}  // namespace corekit

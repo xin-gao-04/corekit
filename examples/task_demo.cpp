@@ -125,39 +125,30 @@ static void DemoTaskGraph() {
     return;
   }
 
-  // AddTask 直接接受函数指针（内部可包装 lambda 数据）
-  // 这里使用静态 lambda 捕获 step 来演示执行顺序
-  static std::atomic<int>* g_step = &step;
-
-  auto make_step_fn = [](const char* name) -> void (*)(void*) {
-    (void)name;
-    return [](void* p) {
-      int s = g_step->fetch_add(1, std::memory_order_relaxed);
-      std::printf("  [step %d] %s\n", s, static_cast<const char*>(p));
+  // AddTask 直接接受 lambda，捕获上下文，无需函数指针或 void* 传参
+  auto make_step = [&step](const char* name) -> std::function<void()> {
+    return [&step, name]() {
+      int s = step.fetch_add(1, std::memory_order_relaxed);
+      std::printf("  [step %d] %s\n", s, name);
     };
   };
-
-  static const char* kLoad    = "load";
-  static const char* kParse   = "parse";
-  static const char* kProcess = "process";
-  static const char* kSave    = "save";
 
   corekit::task::GraphTaskOptions name_only;
   name_only.name = "load";
   corekit::api::Result<corekit::task::TaskId> idLoad =
-      graph->AddTask(make_step_fn("load"), const_cast<char*>(kLoad), name_only);
+      graph->AddTask(make_step("load"), name_only);
 
   name_only.name = "parse";
   corekit::api::Result<corekit::task::TaskId> idParse =
-      graph->AddTask(make_step_fn("parse"), const_cast<char*>(kParse), name_only);
+      graph->AddTask(make_step("parse"), name_only);
 
   name_only.name = "process";
   corekit::api::Result<corekit::task::TaskId> idProcess =
-      graph->AddTask(make_step_fn("process"), const_cast<char*>(kProcess), name_only);
+      graph->AddTask(make_step("process"), name_only);
 
   name_only.name = "save";
   corekit::api::Result<corekit::task::TaskId> idSave =
-      graph->AddTask(make_step_fn("save"), const_cast<char*>(kSave), name_only);
+      graph->AddTask(make_step("save"), name_only);
 
   if (!idLoad.ok() || !idParse.ok() || !idProcess.ok() || !idSave.ok()) {
     std::fprintf(stderr, "AddTask failed\n");

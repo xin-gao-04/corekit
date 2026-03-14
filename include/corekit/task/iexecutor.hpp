@@ -137,40 +137,6 @@ class IExecutor {
   // 运行时调整调度参数（仅 queue_capacity 和 policy 生效，worker_count 不做运行时变更）。
   virtual api::Status Reconfigure(const ExecutorOptions& options) = 0;
 
-  // ── 原始函数指针适配（非虚，兼容 C 回调和内部调用）────────────────────────
-  //
-  // 以下非虚重载将裸函数指针包装为 std::function 后调用上方虚接口，
-  // 供 C 语言回调、TaskGraph 内部等场景使用。C++ 调用方请优先使用 lambda 接口。
-
-  api::Status Submit(void (*fn)(void*), void* user_data) {
-    if (fn == NULL)
-      return api::Status(api::StatusCode::kInvalidArgument, "fn is null");
-    return Submit([fn, user_data]() { fn(user_data); });
-  }
-
-  api::Result<TaskId> SubmitEx(void (*fn)(void*), void* user_data,
-                                const TaskSubmitOptions& options) {
-    if (fn == NULL)
-      return api::Result<TaskId>(
-          api::Status(api::StatusCode::kInvalidArgument, "fn is null"));
-    return SubmitEx([fn, user_data]() { fn(user_data); }, options);
-  }
-
-  api::Result<TaskId> SubmitWithKey(std::uint64_t serial_key,
-                                    void (*fn)(void*), void* user_data) {
-    if (fn == NULL)
-      return api::Result<TaskId>(
-          api::Status(api::StatusCode::kInvalidArgument, "fn is null"));
-    return SubmitWithKey(serial_key, [fn, user_data]() { fn(user_data); });
-  }
-
-  api::Status ParallelFor(std::size_t begin, std::size_t end, std::size_t grain,
-                          void (*fn)(std::size_t, void*), void* user_data) {
-    if (fn == NULL)
-      return api::Status(api::StatusCode::kInvalidArgument, "fn is null");
-    return ParallelFor(begin, end, grain,
-                       [fn, user_data](std::size_t i) { fn(i, user_data); });
-  }
 };
 
 }  // namespace task

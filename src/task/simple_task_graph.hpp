@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -20,7 +21,7 @@ class SimpleTaskGraph : public ITaskGraph {
   std::uint32_t ApiVersion() const override;
   void Release() override;
 
-  api::Result<TaskId> AddTask(void (*fn)(void*), void* user_data,
+  api::Result<TaskId> AddTask(std::function<void()> fn,
                               const GraphTaskOptions& options) override;
   api::Status AddDependency(TaskId before_task_id, TaskId after_task_id) override;
   api::Status AddDependencies(TaskId after_task_id,
@@ -35,8 +36,7 @@ class SimpleTaskGraph : public ITaskGraph {
  private:
   struct TaskNode {
     TaskId id;
-    void (*fn)(void*);
-    void* user_data;
+    std::function<void()> fn;
     GraphTaskOptions options;
     std::string name;
   };

@@ -282,41 +282,26 @@ bool TestExecutorPriorityPolicy() {
   return order[0] == 2 && order[1] == 1;
 }
 
-struct GraphCheckCtx {
-  std::atomic<int>* stage;
-  std::atomic<int>* errors;
-};
-
-void TaskA(void* user_data) {
-  GraphCheckCtx* c = static_cast<GraphCheckCtx*>(user_data);
-  c->stage->store(1, std::memory_order_release);
-}
-
-void TaskB(void* user_data) {
-  GraphCheckCtx* c = static_cast<GraphCheckCtx*>(user_data);
-  if (c->stage->load(std::memory_order_acquire) < 1) {
-    c->errors->fetch_add(1, std::memory_order_relaxed);
-  }
-  c->stage->store(2, std::memory_order_release);
-}
-
-void TaskC(void* user_data) {
-  GraphCheckCtx* c = static_cast<GraphCheckCtx*>(user_data);
-  if (c->stage->load(std::memory_order_acquire) < 2) {
-    c->errors->fetch_add(1, std::memory_order_relaxed);
-  }
-}
-
 bool TestTaskGraphDependency() {
   corekit::task::ITaskGraph* graph = corekit_create_task_graph();
   if (graph == NULL) return false;
   std::atomic<int> stage(0);
   std::atomic<int> errors(0);
-  GraphCheckCtx ctx = {&stage, &errors};
 
-  corekit::api::Result<std::uint64_t> a = graph->AddTask(&TaskA, &ctx);
-  corekit::api::Result<std::uint64_t> b = graph->AddTask(&TaskB, &ctx);
-  corekit::api::Result<std::uint64_t> c = graph->AddTask(&TaskC, &ctx);
+  // A → B → C，验证串行依赖顺序
+  corekit::api::Result<std::uint64_t> a = graph->AddTask([&stage]() {
+    stage.store(1, std::memory_order_release);
+  });
+  corekit::api::Result<std::uint64_t> b = graph->AddTask([&stage, &errors]() {
+    if (stage.load(std::memory_order_acquire) < 1)
+      errors.fetch_add(1, std::memory_order_relaxed);
+    stage.store(2, std::memory_order_release);
+  });
+  corekit::api::Result<std::uint64_t> c = graph->AddTask([&stage, &errors]() {
+    if (stage.load(std::memory_order_acquire) < 2)
+      errors.fetch_add(1, std::memory_order_relaxed);
+  });
+
   if (!a.ok() || !b.ok() || !c.ok()) return false;
   if (!graph->AddDependency(a.value(), b.value()).ok()) return false;
   if (!graph->AddDependency(b.value(), c.value()).ok()) return false;
@@ -332,14 +317,11 @@ bool TestTaskGraphValidateAndRunWithExecutor() {
   if (graph == NULL || executor == NULL) return false;
 
   std::atomic<int> v(0);
-  auto task_inc = [](void* user_data) {
-    std::atomic<int>* p = static_cast<std::atomic<int>*>(user_data);
-    p->fetch_add(1, std::memory_order_relaxed);
-  };
+  auto task_inc = [&v]() { v.fetch_add(1, std::memory_order_relaxed); };
 
-  corekit::api::Result<std::uint64_t> a = graph->AddTask(task_inc, &v);
-  corekit::api::Result<std::uint64_t> b = graph->AddTask(task_inc, &v);
-  corekit::api::Result<std::uint64_t> c = graph->AddTask(task_inc, &v);
+  corekit::api::Result<std::uint64_t> a = graph->AddTask(task_inc);
+  corekit::api::Result<std::uint64_t> b = graph->AddTask(task_inc);
+  corekit::api::Result<std::uint64_t> c = graph->AddTask(task_inc);
   if (!a.ok() || !b.ok() || !c.ok()) return false;
   if (!graph->AddDependency(a.value(), c.value()).ok()) return false;
   if (!graph->AddDependency(b.value(), c.value()).ok()) return false;

@@ -130,7 +130,6 @@ endif()
 add_library(corekit
     src/api/status.cpp
     src/log_manager.cpp
-    src/log/log_manager_adapter.cpp
     src/ipc/shared_memory_channel.cpp
     src/json/json_codec.cpp
     ${COREKIT_MEMORY_SOURCES}
