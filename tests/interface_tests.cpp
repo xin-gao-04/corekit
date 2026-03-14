@@ -92,7 +92,7 @@ bool TestExecutorSubmitAndWait() {
   if (executor == NULL) return false;
   std::atomic<int> counter(0);
   for (int i = 0; i < 100; ++i) {
-    corekit::api::Status st = executor->Submit(&IncCounterTask, &counter);
+    corekit::api::Status st = executor->Submit([&counter]() { IncCounterTask(&counter); });
     if (!st.ok()) return false;
   }
   corekit::api::Status st_exec = executor->WaitAll();
@@ -110,7 +110,8 @@ bool TestExecutorParallelFor() {
   corekit::task::IExecutor* executor = corekit_create_executor();
   if (executor == NULL) return false;
   std::atomic<long long> sum(0);
-  corekit::api::Status st = executor->ParallelFor(1, 101, 8, &AddIndexTask, &sum);
+  corekit::api::Status st =
+      executor->ParallelFor(1, 101, 8, [&sum](std::size_t index) { AddIndexTask(index, &sum); });
   corekit_destroy_executor(executor);
   if (!st.ok()) return false;
   return sum.load(std::memory_order_relaxed) == 5050;
@@ -149,9 +150,9 @@ bool TestExecutorSubmitWithKeyAndCancel() {
   SerialTaskCtx ctx = {&running, &max_running, &executed, 80};
 
   corekit::api::Result<corekit::task::TaskId> t1 =
-      executor->SubmitWithKey(99, &SerialTask, &ctx);
+      executor->SubmitWithKey(99, [&ctx]() { SerialTask(&ctx); });
   corekit::api::Result<corekit::task::TaskId> t2 =
-      executor->SubmitWithKey(99, &SerialTask, &ctx);
+      executor->SubmitWithKey(99, [&ctx]() { SerialTask(&ctx); });
   if (!t1.ok() || !t2.ok()) return false;
 
   corekit::api::Status cancel = executor->TryCancel(t2.value());
@@ -184,8 +185,10 @@ bool TestExecutorSubmitExSerialKey() {
   corekit::task::TaskSubmitOptions bopt;
   bopt.serial_key = 12345;
 
-  corekit::api::Result<corekit::task::TaskId> a = executor->SubmitEx(&SerialTask, &ctx, aopt);
-  corekit::api::Result<corekit::task::TaskId> b = executor->SubmitEx(&SerialTask, &ctx, bopt);
+  corekit::api::Result<corekit::task::TaskId> a =
+      executor->SubmitEx([&ctx]() { SerialTask(&ctx); }, aopt);
+  corekit::api::Result<corekit::task::TaskId> b =
+      executor->SubmitEx([&ctx]() { SerialTask(&ctx); }, bopt);
   if (!a.ok() || !b.ok()) return false;
 
   corekit::task::TaskId ids[2] = {a.value(), b.value()};
@@ -203,14 +206,13 @@ bool TestExecutorWaitAll() {
   if (executor == NULL) return false;
 
   std::atomic<int> done(0);
-  auto work = [](void* p) {
-    std::atomic<int>* d = static_cast<std::atomic<int>*>(p);
+  auto work = [&done]() {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    d->fetch_add(1, std::memory_order_relaxed);
+    done.fetch_add(1, std::memory_order_relaxed);
   };
 
   for (int i = 0; i < 20; ++i) {
-    if (!executor->Submit(work, &done).ok()) return false;
+    if (!executor->Submit(work).ok()) return false;
   }
 
   if (!executor->WaitAll().ok()) return false;
@@ -260,7 +262,7 @@ bool TestExecutorPriorityPolicy() {
   PriorityOrderCtx low_ctx = {&order, &order_mu, 1};
   PriorityOrderCtx high_ctx = {&order, &order_mu, 2};
 
-  if (!executor->Submit(&BlockingTask, &blocker_ctx).ok()) return false;
+  if (!executor->Submit([&blocker_ctx]() { BlockingTask(&blocker_ctx); }).ok()) return false;
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
   corekit::task::TaskSubmitOptions low_opt;
@@ -269,9 +271,9 @@ bool TestExecutorPriorityPolicy() {
   high_opt.priority = corekit::task::TaskPriority::kHigh;
 
   corekit::api::Result<corekit::task::TaskId> low =
-      executor->SubmitEx(&PriorityProbeTask, &low_ctx, low_opt);
+      executor->SubmitEx([&low_ctx]() { PriorityProbeTask(&low_ctx); }, low_opt);
   corekit::api::Result<corekit::task::TaskId> high =
-      executor->SubmitEx(&PriorityProbeTask, &high_ctx, high_opt);
+      executor->SubmitEx([&high_ctx]() { PriorityProbeTask(&high_ctx); }, high_opt);
   if (!low.ok() || !high.ok()) return false;
 
   release.store(true, std::memory_order_release);
@@ -1009,7 +1011,6 @@ int main() {
 
   return failed == 0 ? 0 : 1;
 }
-
 
 
 

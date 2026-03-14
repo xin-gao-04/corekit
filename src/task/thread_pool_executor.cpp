@@ -110,8 +110,19 @@ std::size_t ThreadPoolExecutor::PickNextTaskIndexLocked() const {
 // ── Submit / SubmitEx / SubmitWithKey / ParallelFor ───────────────────────────
 
 api::Status ThreadPoolExecutor::Submit(std::function<void()> fn) {
-  api::Result<TaskId> r = SubmitEx(std::move(fn), TaskSubmitOptions());
-  return r.ok() ? api::Status::Ok() : r.status();
+  if (!fn) {
+    return CK_STATUS(api::StatusCode::kInvalidArgument, "fn is empty");
+  }
+  return Enqueue([this, fn]() {
+    try {
+      fn();
+      std::lock_guard<std::mutex> lock(mu_);
+      ++stats_.completed;
+    } catch (...) {
+      std::lock_guard<std::mutex> lock(mu_);
+      ++stats_.failed;
+    }
+  }, TaskSubmitOptions());
 }
 
 api::Result<TaskId> ThreadPoolExecutor::SubmitEx(std::function<void()> fn,

@@ -573,7 +573,7 @@ api::Status GlogLogManager::Reload(const std::string& config_path) {
   }
   std::lock_guard<std::mutex> lock(GlobalMutex());
   if (!GlobalInitialized()) {
-    return api::Status(api::StatusCode::kFailedPrecondition, "not initialized");
+    return api::Status(api::StatusCode::kNotInitialized, "not initialized");
   }
   bool ok = true;
   const LoggingOptions options = LoadFromFile(config_path, &ok);
