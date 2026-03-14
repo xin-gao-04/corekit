@@ -53,23 +53,23 @@ std::size_t ThreadPoolExecutor::NormalizeWorkerCount(std::size_t worker_count) c
   return count == 0 ? 1 : count;
 }
 
-api::Status ThreadPoolExecutor::Enqueue(const std::function<void()>& fn,
+api::Status ThreadPoolExecutor::Enqueue(std::function<void()> fn,
                                         const TaskSubmitOptions& options) {
   {
     std::lock_guard<std::mutex> lock(mu_);
     if (stopping_) {
       return CK_STATUS(api::StatusCode::kInternalError,
-                         "executor is stopping, cannot accept new tasks");
+                       "executor is stopping, cannot accept new tasks");
     }
     if (options_.queue_capacity > 0 && tasks_.size() >= options_.queue_capacity) {
       ++stats_.rejected;
       return CK_STATUS(api::StatusCode::kWouldBlock, "executor queue is full");
     }
     TaskEntry entry;
-    entry.fn = fn;
+    entry.fn = std::move(fn);
     entry.priority = options.priority;
     entry.seq = ++enqueue_seq_;
-    tasks_.push_back(entry);
+    tasks_.push_back(std::move(entry));
     ++pending_tasks_;
     ++stats_.submitted;
     stats_.queue_depth = QueueDepthLocked();
@@ -87,7 +87,7 @@ std::size_t ThreadPoolExecutor::PickNextTaskIndexLocked() const {
     return 0;
   }
 
-  // kPriority / kHybridFairPriority: select highest priority and keep FIFO within same priority.
+  // kPriority / kHybridFairPriority: highest priority first, FIFO within same priority.
   std::size_t best = 0;
   auto score = [](TaskPriority p) -> int {
     if (p == TaskPriority::kHigh) return 2;
@@ -107,15 +107,17 @@ std::size_t ThreadPoolExecutor::PickNextTaskIndexLocked() const {
   return best;
 }
 
-api::Status ThreadPoolExecutor::Submit(void (*fn)(void*), void* user_data) {
-  api::Result<TaskId> r = SubmitEx(fn, user_data, TaskSubmitOptions());
+// ── Submit / SubmitEx / SubmitWithKey / ParallelFor ───────────────────────────
+
+api::Status ThreadPoolExecutor::Submit(std::function<void()> fn) {
+  api::Result<TaskId> r = SubmitEx(std::move(fn), TaskSubmitOptions());
   return r.ok() ? api::Status::Ok() : r.status();
 }
 
-api::Result<TaskId> ThreadPoolExecutor::SubmitEx(void (*fn)(void*), void* user_data,
+api::Result<TaskId> ThreadPoolExecutor::SubmitEx(std::function<void()> fn,
                                                  const TaskSubmitOptions& options) {
-  if (fn == NULL) {
-    return api::Result<TaskId>(CK_STATUS(api::StatusCode::kInvalidArgument, "fn is null"));
+  if (!fn) {
+    return api::Result<TaskId>(CK_STATUS(api::StatusCode::kInvalidArgument, "fn is empty"));
   }
 
   std::shared_ptr<std::mutex> key_mu;
@@ -137,7 +139,7 @@ api::Result<TaskId> ThreadPoolExecutor::SubmitEx(void (*fn)(void*), void* user_d
     pending_ids_.insert(id);
   }
 
-  api::Status st = Enqueue([this, id, fn, user_data, state, key_mu]() {
+  api::Status st = Enqueue([this, id, fn, state, key_mu]() {
     bool canceled = false;
     {
       std::lock_guard<std::mutex> lock(mu_);
@@ -153,9 +155,9 @@ api::Result<TaskId> ThreadPoolExecutor::SubmitEx(void (*fn)(void*), void* user_d
     try {
       if (key_mu) {
         std::lock_guard<std::mutex> serial_lock(*key_mu);
-        fn(user_data);
+        fn();
       } else {
-        fn(user_data);
+        fn();
       }
       MarkTaskDone(id, true, false);
     } catch (...) {
@@ -174,51 +176,30 @@ api::Result<TaskId> ThreadPoolExecutor::SubmitEx(void (*fn)(void*), void* user_d
 }
 
 api::Result<TaskId> ThreadPoolExecutor::SubmitWithKey(std::uint64_t serial_key,
-                                                      void (*fn)(void*), void* user_data) {
+                                                      std::function<void()> fn) {
   TaskSubmitOptions options;
   options.serial_key = serial_key;
-  return SubmitEx(fn, user_data, options);
+  return SubmitEx(std::move(fn), options);
 }
 
 api::Status ThreadPoolExecutor::ParallelFor(std::size_t begin, std::size_t end, std::size_t grain,
-                                            void (*fn)(std::size_t, void*), void* user_data) {
-  if (fn == NULL) return CK_STATUS(api::StatusCode::kInvalidArgument, "fn is null");
+                                            std::function<void(std::size_t)> fn) {
+  if (!fn) return CK_STATUS(api::StatusCode::kInvalidArgument, "fn is empty");
   if (end < begin) return CK_STATUS(api::StatusCode::kInvalidArgument, "end must be >= begin");
   if (begin == end) return api::Status::Ok();
   if (grain == 0) grain = 1;
 
-  struct ParallelChunkCtx {
-    void (*fn)(std::size_t, void*);
-    void* user_data;
-    std::size_t begin;
-    std::size_t end;
-  };
-
-  auto run_chunk = [](void* p) {
-    ParallelChunkCtx* ctx = static_cast<ParallelChunkCtx*>(p);
-    if (ctx == NULL || ctx->fn == NULL) return;
-    for (std::size_t i = ctx->begin; i < ctx->end; ++i) {
-      ctx->fn(i, ctx->user_data);
-    }
-  };
-
-  std::vector<ParallelChunkCtx> chunks;
+  std::vector<TaskId> ids;
   for (std::size_t chunk_begin = begin; chunk_begin < end; chunk_begin += grain) {
     const std::size_t chunk_end = std::min(chunk_begin + grain, end);
-    ParallelChunkCtx c = {fn, user_data, chunk_begin, chunk_end};
-    chunks.push_back(c);
-  }
-
-  std::vector<TaskId> ids;
-  ids.reserve(chunks.size());
-  for (std::size_t i = 0; i < chunks.size(); ++i) {
-    TaskSubmitOptions default_options;
-    default_options.priority = TaskPriority::kNormal;
-    api::Result<TaskId> sub = SubmitEx(run_chunk, &chunks[i], default_options);
+    // Capture fn by value (shared_ptr-like copy via std::function's ref-counted capture)
+    api::Result<TaskId> sub = SubmitEx(
+        [fn, chunk_begin, chunk_end]() {
+          for (std::size_t i = chunk_begin; i < chunk_end; ++i) fn(i);
+        },
+        TaskSubmitOptions());
     if (!sub.ok()) {
-      if (!ids.empty()) {
-        (void)WaitBatch(&ids[0], ids.size(), 0);
-      }
+      if (!ids.empty()) (void)WaitBatch(&ids[0], ids.size(), 0);
       return sub.status();
     }
     ids.push_back(sub.value());
@@ -227,12 +208,16 @@ api::Status ThreadPoolExecutor::ParallelFor(std::size_t begin, std::size_t end, 
   return ids.empty() ? api::Status::Ok() : WaitBatch(&ids[0], ids.size(), 0);
 }
 
+// ── Wait / WaitBatch / TryCancel / WaitAll ────────────────────────────────────
+
 api::Status ThreadPoolExecutor::Wait(TaskId id, std::uint32_t timeout_ms) {
   std::shared_ptr<TaskState> state;
   {
     std::lock_guard<std::mutex> lock(mu_);
-    typename std::unordered_map<TaskId, std::shared_ptr<TaskState> >::iterator it = states_.find(id);
-    if (it == states_.end()) return CK_STATUS(api::StatusCode::kNotFound, "task id not found");
+    typename std::unordered_map<TaskId, std::shared_ptr<TaskState> >::iterator it =
+        states_.find(id);
+    if (it == states_.end())
+      return CK_STATUS(api::StatusCode::kNotFound, "task id not found");
     state = it->second;
   }
 
@@ -241,8 +226,8 @@ api::Status ThreadPoolExecutor::Wait(TaskId id, std::uint32_t timeout_ms) {
     state->cv.wait(lock, [state]() { return state->done; });
     return api::Status::Ok();
   }
-  const bool done = state->cv.wait_for(lock, std::chrono::milliseconds(timeout_ms),
-                                       [state]() { return state->done; });
+  const bool done = state->cv.wait_for(
+      lock, std::chrono::milliseconds(timeout_ms), [state]() { return state->done; });
   return done ? api::Status::Ok() : CK_STATUS(api::StatusCode::kWouldBlock, "wait timeout");
 }
 
@@ -257,9 +242,8 @@ api::Status ThreadPoolExecutor::WaitBatch(const TaskId* ids, std::size_t count,
     if (timeout_ms != 0) {
       const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::steady_clock::now() - start);
-      if (elapsed.count() >= timeout_ms) {
+      if (elapsed.count() >= timeout_ms)
         return CK_STATUS(api::StatusCode::kWouldBlock, "wait batch timeout");
-      }
       remain = timeout_ms - static_cast<std::uint32_t>(elapsed.count());
     }
     api::Status st = Wait(ids[i], remain);
@@ -270,28 +254,14 @@ api::Status ThreadPoolExecutor::WaitBatch(const TaskId* ids, std::size_t count,
 
 api::Status ThreadPoolExecutor::TryCancel(TaskId id) {
   std::lock_guard<std::mutex> lock(mu_);
-  typename std::unordered_map<TaskId, std::shared_ptr<TaskState> >::iterator it = states_.find(id);
-  if (it == states_.end()) return CK_STATUS(api::StatusCode::kNotFound, "task id not found");
-  if (it->second->started || it->second->done) {
+  typename std::unordered_map<TaskId, std::shared_ptr<TaskState> >::iterator it =
+      states_.find(id);
+  if (it == states_.end())
+    return CK_STATUS(api::StatusCode::kNotFound, "task id not found");
+  if (it->second->started || it->second->done)
     return CK_STATUS(api::StatusCode::kWouldBlock, "task already running or done");
-  }
   it->second->canceled = true;
   ++stats_.canceled;
-  return api::Status::Ok();
-}
-
-api::Status ThreadPoolExecutor::WaitAllSubmittedBefore() {
-  TaskId snapshot = 0;
-  {
-    std::lock_guard<std::mutex> lock(mu_);
-    snapshot = next_task_id_ == 0 ? 0 : (next_task_id_ - 1);
-  }
-
-  std::unique_lock<std::mutex> lock(mu_);
-  idle_cv_.wait(lock, [this, snapshot]() {
-    if (pending_ids_.empty()) return true;
-    return *pending_ids_.begin() > snapshot;
-  });
   return api::Status::Ok();
 }
 
@@ -299,6 +269,18 @@ api::Status ThreadPoolExecutor::WaitAll() {
   std::unique_lock<std::mutex> lock(mu_);
   idle_cv_.wait(lock, [this]() { return pending_tasks_ == 0 && active_workers_ == 0; });
   return api::Status::Ok();
+}
+
+// ── IsTaskSucceeded / QueryStats / Reconfigure ───────────────────────────────
+
+api::Result<bool> ThreadPoolExecutor::IsTaskSucceeded(TaskId id) const {
+  std::lock_guard<std::mutex> lock(mu_);
+  typename std::unordered_map<TaskId, std::shared_ptr<TaskState> >::const_iterator it =
+      states_.find(id);
+  if (it == states_.end())
+    return api::Result<bool>(CK_STATUS(api::StatusCode::kNotFound,
+                                       "task id not found or result expired"));
+  return api::Result<bool>(it->second->succeeded);
 }
 
 api::Result<ExecutorStats> ThreadPoolExecutor::QueryStats() const {
@@ -315,20 +297,18 @@ api::Status ThreadPoolExecutor::Reconfigure(const ExecutorOptions& options) {
   return api::Status::Ok();
 }
 
-api::Status ThreadPoolExecutor::SetSchedulingPolicy(ExecutorPolicy policy) {
-  std::lock_guard<std::mutex> lock(mu_);
-  options_.policy = policy;
-  return api::Status::Ok();
-}
+// ── Internal helpers ──────────────────────────────────────────────────────────
 
 TaskId ThreadPoolExecutor::NextTaskIdLocked() { return next_task_id_++; }
 
 void ThreadPoolExecutor::MarkTaskDone(TaskId id, bool executed, bool failed) {
   std::lock_guard<std::mutex> lock(mu_);
-  typename std::unordered_map<TaskId, std::shared_ptr<TaskState> >::iterator it = states_.find(id);
+  typename std::unordered_map<TaskId, std::shared_ptr<TaskState> >::iterator it =
+      states_.find(id);
   if (it == states_.end()) return;
 
   it->second->done = true;
+  it->second->succeeded = executed && !failed;
   it->second->cv.notify_all();
   pending_ids_.erase(id);
 
@@ -361,7 +341,7 @@ void ThreadPoolExecutor::WorkerLoop() {
       cv_.wait(lock, [this]() { return stopping_ || !tasks_.empty(); });
       if (stopping_ && tasks_.empty()) return;
       const std::size_t idx = PickNextTaskIndexLocked();
-      task = tasks_[idx].fn;
+      task = std::move(tasks_[idx].fn);
       tasks_.erase(tasks_.begin() + static_cast<std::ptrdiff_t>(idx));
       ++active_workers_;
     }
@@ -387,4 +367,3 @@ void ThreadPoolExecutor::WorkerLoop() {
 
 }  // namespace task
 }  // namespace corekit
-

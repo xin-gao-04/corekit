@@ -196,7 +196,7 @@ bool TestExecutorSubmitExSerialKey() {
   return max_running.load(std::memory_order_relaxed) <= 1;
 }
 
-bool TestExecutorWaitAllSubmittedBefore() {
+bool TestExecutorWaitAll() {
   corekit::task::ExecutorOptions opt;
   opt.worker_count = 4;
   corekit::task::IExecutor* executor = corekit_create_executor_v2(&opt);
@@ -213,7 +213,7 @@ bool TestExecutorWaitAllSubmittedBefore() {
     if (!executor->Submit(work, &done).ok()) return false;
   }
 
-  if (!executor->WaitAllSubmittedBefore().ok()) return false;
+  if (!executor->WaitAll().ok()) return false;
   corekit::api::Result<corekit::task::ExecutorStats> stats = executor->QueryStats();
   corekit_destroy_executor(executor);
   if (!stats.ok()) return false;
@@ -986,7 +986,7 @@ int main() {
       {"executor_parallel_for", TestExecutorParallelFor},
       {"executor_submit_with_key_and_cancel", TestExecutorSubmitWithKeyAndCancel},
       {"executor_submit_ex_serial_key", TestExecutorSubmitExSerialKey},
-      {"executor_wait_all_submitted_before", TestExecutorWaitAllSubmittedBefore},
+      {"executor_wait_all", TestExecutorWaitAll},
       {"executor_priority_policy", TestExecutorPriorityPolicy},
       {"task_graph_dependency", TestTaskGraphDependency},
       {"task_graph_validate_and_run_with_executor", TestTaskGraphValidateAndRunWithExecutor},
