@@ -25,16 +25,19 @@ enum class ExecutorPolicy : std::uint8_t {
 };
 
 struct ExecutorOptions {
+  // 工作线程数。0 = 自动（等于硬件并发数）。
   std::size_t worker_count = 0;
+  // 队列容量上限。0 = 无限制。
   std::size_t queue_capacity = 0;
-  bool enable_work_stealing = false;
+  // 调度策略，默认为混合公平优先级策略。
   ExecutorPolicy policy = ExecutorPolicy::kHybridFairPriority;
 };
 
 struct TaskSubmitOptions {
+  // 任务优先级，影响调度顺序。
   TaskPriority priority = TaskPriority::kNormal;
-  std::uint32_t tag = 0;       // Reserved for user-side classification/metrics.
-  std::uint64_t serial_key = 0;  // 0 means no serial-group constraint.
+  // 串行键：同一键值的任务不会并发执行。0 表示无限制。
+  std::uint64_t serial_key = 0;
 };
 
 struct ExecutorStats {

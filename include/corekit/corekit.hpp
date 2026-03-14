@@ -3,6 +3,7 @@
 #include "corekit/api/factory.hpp"
 #include "corekit/api/status.hpp"
 #include "corekit/api/version.hpp"
+#include "corekit/concurrent/containers.hpp"
 #include "corekit/concurrent/i_map.hpp"
 #include "corekit/concurrent/i_queue.hpp"
 #include "corekit/concurrent/i_ring_buffer.hpp"

@@ -1,4 +1,4 @@
-#include "corekit/legacy/log_manager_legacy.hpp"
+#include "log/log_manager_legacy_internal.hpp"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX

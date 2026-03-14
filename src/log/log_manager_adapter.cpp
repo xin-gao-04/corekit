@@ -1,7 +1,7 @@
 #include "log/log_manager_adapter.hpp"
 
 #include "corekit/api/version.hpp"
-#include "corekit/legacy/log_manager_legacy.hpp"
+#include "log/log_manager_legacy_internal.hpp"
 
 namespace corekit {
 namespace log {
@@ -31,19 +31,9 @@ LoggingOptions FromLegacy(const corekit_legacy::LoggingOptions& src) {
   out.async_sink = src.async_sink;
   out.async_queue_size = src.async_queue_size;
   out.async_drop_when_full = src.async_drop_when_full;
-  out.bootstrap_stderr = src.bootstrap_stderr;
-  out.install_failure_signal_handler = src.install_failure_signal_handler;
-  out.symbolize_stacktrace = src.symbolize_stacktrace;
-  out.glog_file_output = src.glog_file_output;
   out.logtostderr = src.logtostderr;
-  out.alsologtostderr = src.alsologtostderr;
-  out.colorlogtostderr = src.colorlogtostderr;
-  out.log_prefix = src.log_prefix;
   out.min_log_level = src.min_log_level;
-  out.stderr_threshold = src.stderr_threshold;
-  out.verbosity = src.verbosity;
   out.max_log_size_mb = src.max_log_size_mb;
-  out.logbufsecs = src.logbufsecs;
   out.stop_logging_if_full_disk = src.stop_logging_if_full_disk;
   return out;
 }

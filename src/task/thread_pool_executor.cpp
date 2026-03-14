@@ -29,7 +29,6 @@ ThreadPoolExecutor::ThreadPoolExecutor(std::size_t worker_count)
 ThreadPoolExecutor::ThreadPoolExecutor(const ExecutorOptions& options)
     : ThreadPoolExecutor(options.worker_count) {
   options_.queue_capacity = options.queue_capacity;
-  options_.enable_work_stealing = options.enable_work_stealing;
   options_.policy = options.policy;
 }
 
@@ -312,7 +311,6 @@ api::Result<ExecutorStats> ThreadPoolExecutor::QueryStats() const {
 api::Status ThreadPoolExecutor::Reconfigure(const ExecutorOptions& options) {
   std::lock_guard<std::mutex> lock(mu_);
   options_.queue_capacity = options.queue_capacity;
-  options_.enable_work_stealing = options.enable_work_stealing;
   options_.policy = options.policy;
   return api::Status::Ok();
 }
