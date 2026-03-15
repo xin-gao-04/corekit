@@ -30,6 +30,56 @@ set(COREKIT_GLOG_DIR "${COREKIT_THIRDPARTY_DIR}/glog")
 set(COREKIT_MIMALLOC_DIR "${COREKIT_THIRDPARTY_DIR}/mimalloc")
 set(COREKIT_ONETBB_DIR "${COREKIT_THIRDPARTY_DIR}/oneTBB")
 
+# ── zip 自动解压辅助函数 ───────────────────────────────────────────────────────
+# 用法：_corekit_unzip_dep(<name> <zip_path> <dest_parent_dir>)
+# 将 zip 解压到 <dest_parent_dir>/<name>。
+# GitHub zip 通常只含一个顶级目录，自动 rename 为 <name>。
+function(_corekit_unzip_dep name zip_path dest_parent)
+  set(_tmp "${dest_parent}/${name}__tmp_extract")
+  file(MAKE_DIRECTORY "${_tmp}")
+  execute_process(
+    COMMAND ${CMAKE_COMMAND} -E tar xf "${zip_path}"
+    WORKING_DIRECTORY "${_tmp}"
+    RESULT_VARIABLE _rc
+  )
+  if(NOT _rc EQUAL 0)
+    message(FATAL_ERROR "[corekit] Failed to extract ${name} from ${zip_path}")
+  endif()
+  # 检测顶级条目
+  file(GLOB _top_entries LIST_DIRECTORIES true "${_tmp}/*")
+  list(LENGTH _top_entries _n)
+  set(_final "${dest_parent}/${name}")
+  if(_n EQUAL 1)
+    # GitHub 风格：单一顶级目录，重命名
+    file(RENAME "${_top_entries}" "${_final}")
+    message(STATUS "[corekit] ${name}: extracted (single root dir) -> ${_final}")
+  else()
+    file(RENAME "${_tmp}" "${_final}")
+    message(STATUS "[corekit] ${name}: extracted -> ${_final}")
+  endif()
+  if(EXISTS "${_tmp}")
+    file(REMOVE_RECURSE "${_tmp}")
+  endif()
+endfunction()
+
+# ── tinyxml2 依赖（zip vendor）────────────────────────────────────────────────
+set(_COREKIT_ZIP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
+set(_COREKIT_TINYXML2_DIR "${_COREKIT_ZIP_DIR}/tinyxml2")
+set(_COREKIT_TINYXML2_ZIP "${_COREKIT_ZIP_DIR}/tinyxml2.zip")
+
+if(NOT EXISTS "${_COREKIT_TINYXML2_DIR}/tinyxml2.h")
+  if(EXISTS "${_COREKIT_TINYXML2_ZIP}")
+    _corekit_unzip_dep(tinyxml2 "${_COREKIT_TINYXML2_ZIP}" "${_COREKIT_ZIP_DIR}")
+  else()
+    message(FATAL_ERROR
+      "[corekit] tinyxml2 not found.\n"
+      "  提供方式 1（推荐）：third_party/tinyxml2.zip 已入库，无需额外操作\n"
+      "  提供方式 2（联网更新）：bash scripts/vendor-deps.sh\n"
+      "  当前搜索路径：${_COREKIT_TINYXML2_DIR}/tinyxml2.h")
+  endif()
+endif()
+message(STATUS "[corekit] tinyxml2 ready: ${_COREKIT_TINYXML2_DIR}")
+
 if (COREKIT_BUNDLE_DEPS_STATIC)
   if (NOT BUILD_SHARED_LIBS)
     message(FATAL_ERROR
@@ -163,6 +213,9 @@ add_library(corekit
     src/task/thread_pool_executor.cpp
     src/task/simple_task_graph.cpp
     src/api/c_api.cpp
+    # XML module（tinyxml2 后端）
+    src/xml/tinyxml2_doc_impl.cpp
+    "${_COREKIT_TINYXML2_DIR}/tinyxml2.cpp"
 )
 if (WIN32 AND BUILD_SHARED_LIBS)
   target_compile_definitions(corekit PRIVATE COREKIT_BUILD_DLL)
@@ -175,6 +228,8 @@ target_include_directories(corekit
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${COREKIT_EXTRA_INCLUDE_DIRS}
+        # tinyxml2 headers（PRIVATE：不暴露给消费者）
+        ${_COREKIT_TINYXML2_DIR}
 )
 if (COREKIT_EXTRA_DEFS)
   target_compile_definitions(corekit PRIVATE ${COREKIT_EXTRA_DEFS})
@@ -254,6 +309,9 @@ if (COREKIT_BUILD_TESTS)
 
   add_executable(memory_perf_compare tests/memory_perf_compare.cpp)
   target_link_libraries(memory_perf_compare PRIVATE corekit)
+
+  add_executable(xml_tests tests/xml_tests.cpp)
+  target_link_libraries(xml_tests PRIVATE corekit)
 endif()
 
 if (COREKIT_BUILD_EXAMPLES)
