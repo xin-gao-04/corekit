@@ -18,4 +18,5 @@
 #include "corekit/memory/i_object_pool.hpp"
 #include "corekit/task/iexecutor.hpp"
 #include "corekit/task/i_task_graph.hpp"
+#include "corekit/xml/i_xml_doc.hpp"
 
