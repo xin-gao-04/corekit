@@ -18,6 +18,9 @@ set(COREKIT_THIRDPARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3party" CACHE PATH
 option(COREKIT_USE_LOCAL_THIRDPARTY_ONLY
        "Require all dependencies from local 3party directory"
        OFF)
+option(COREKIT_AUTO_FETCH_DEPS
+       "Automatically download missing third-party sources when local/system deps are unavailable"
+       ON)
 option(COREKIT_BUNDLE_DEPS_STATIC
        "Build glog from source as static lib and link it into shared corekit"
        ON)
@@ -29,6 +32,42 @@ option(COREKIT_ENABLE_TBBMALLOC_BACKEND "Enable tbbmalloc backend support" OFF)
 set(COREKIT_GLOG_DIR "${COREKIT_THIRDPARTY_DIR}/glog")
 set(COREKIT_MIMALLOC_DIR "${COREKIT_THIRDPARTY_DIR}/mimalloc")
 set(COREKIT_ONETBB_DIR "${COREKIT_THIRDPARTY_DIR}/oneTBB")
+
+set(COREKIT_GLOG_URL "https://github.com/google/glog/archive/refs/tags/v0.7.1.zip")
+set(COREKIT_MIMALLOC_URL "https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.7.zip")
+set(COREKIT_ONETBB_URL "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.12.0.zip")
+
+include(FetchContent)
+
+function(_corekit_resolve_source_dep out_var dep_name local_dir dep_url)
+  string(TOLOWER "${dep_name}" _fetch_suffix)
+  if(EXISTS "${local_dir}/CMakeLists.txt")
+    set(${out_var} "${local_dir}" PARENT_SCOPE)
+    message(STATUS "[corekit] ${dep_name}: using local source ${local_dir}")
+    return()
+  endif()
+
+  if(COREKIT_USE_LOCAL_THIRDPARTY_ONLY)
+    message(FATAL_ERROR "[corekit] Missing local dependency: ${local_dir}")
+  endif()
+
+  if(NOT COREKIT_AUTO_FETCH_DEPS)
+    set(${out_var} "" PARENT_SCOPE)
+    return()
+  endif()
+
+  set(_fetch_name "corekit_${_fetch_suffix}")
+  message(STATUS "[corekit] ${dep_name}: local source missing, fetching ${dep_url}")
+  FetchContent_Declare(${_fetch_name}
+    URL "${dep_url}"
+  )
+  FetchContent_GetProperties(${_fetch_name})
+  if(NOT ${_fetch_name}_POPULATED)
+    FetchContent_Populate(${_fetch_name})
+  endif()
+  set(${out_var} "${${_fetch_name}_SOURCE_DIR}" PARENT_SCOPE)
+  message(STATUS "[corekit] ${dep_name}: fetched to ${${_fetch_name}_SOURCE_DIR}")
+endfunction()
 
 # ── zip 自动解压辅助函数 ───────────────────────────────────────────────────────
 # 用法：_corekit_unzip_dep(<name> <zip_path> <dest_parent_dir>)
@@ -91,15 +130,18 @@ set(_corekit_have_local_glog OFF)
 if (EXISTS "${COREKIT_GLOG_DIR}/CMakeLists.txt")
   set(_corekit_have_local_glog ON)
 endif()
+set(_corekit_glog_source_dir "")
 
 if (_corekit_have_local_glog)
   # Prefer vendored glog when it is present.
   set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
-  set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
   set(_corekit_prev_build_shared_libs ${BUILD_SHARED_LIBS})
+  set(_corekit_prev_build_testing ${BUILD_TESTING})
+  set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
   add_subdirectory("${COREKIT_GLOG_DIR}" "${CMAKE_BINARY_DIR}/3party/glog" EXCLUDE_FROM_ALL)
   set(BUILD_SHARED_LIBS ${_corekit_prev_build_shared_libs} CACHE BOOL "" FORCE)
+  set(BUILD_TESTING ${_corekit_prev_build_testing} CACHE BOOL "" FORCE)
 
   if (NOT TARGET glog::glog AND TARGET glog)
     add_library(glog::glog ALIAS glog)
@@ -122,9 +164,25 @@ else()
     endif()
   endif()
   if (NOT TARGET glog::glog)
+    _corekit_resolve_source_dep(_corekit_glog_source_dir glog "${COREKIT_GLOG_DIR}" "${COREKIT_GLOG_URL}")
+    if (_corekit_glog_source_dir)
+      set(WITH_GFLAGS OFF CACHE BOOL "" FORCE)
+      set(_corekit_prev_build_shared_libs ${BUILD_SHARED_LIBS})
+      set(_corekit_prev_build_testing ${BUILD_TESTING})
+      set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+      set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+      add_subdirectory("${_corekit_glog_source_dir}" "${CMAKE_BINARY_DIR}/3party/glog" EXCLUDE_FROM_ALL)
+      set(BUILD_SHARED_LIBS ${_corekit_prev_build_shared_libs} CACHE BOOL "" FORCE)
+      set(BUILD_TESTING ${_corekit_prev_build_testing} CACHE BOOL "" FORCE)
+      if (NOT TARGET glog::glog AND TARGET glog)
+        add_library(glog::glog ALIAS glog)
+      endif()
+    endif()
+  endif()
+  if (NOT TARGET glog::glog)
     message(FATAL_ERROR
             "glog was not found. Provide 3party/glog, install a system glog package, "
-            "or set COREKIT_USE_LOCAL_THIRDPARTY_ONLY=ON only when vendored sources exist.")
+            "or leave COREKIT_AUTO_FETCH_DEPS=ON to auto-download missing sources.")
   endif()
 endif()
 
@@ -140,8 +198,11 @@ set(COREKIT_EXTRA_DEFS "")
 
 # mimalloc (optional, local source only)
 if (COREKIT_ENABLE_MIMALLOC_BACKEND)
-  if (NOT EXISTS "${COREKIT_MIMALLOC_DIR}/CMakeLists.txt")
-    message(FATAL_ERROR "COREKIT_ENABLE_MIMALLOC_BACKEND=ON but missing ${COREKIT_MIMALLOC_DIR}")
+  _corekit_resolve_source_dep(_corekit_mimalloc_source_dir mimalloc "${COREKIT_MIMALLOC_DIR}" "${COREKIT_MIMALLOC_URL}")
+  if (NOT _corekit_mimalloc_source_dir)
+    message(FATAL_ERROR
+      "COREKIT_ENABLE_MIMALLOC_BACKEND=ON but mimalloc was not found. "
+      "Provide ${COREKIT_MIMALLOC_DIR}, or leave COREKIT_AUTO_FETCH_DEPS=ON.")
   endif()
 
   set(_corekit_mi_target "")
@@ -152,7 +213,7 @@ if (COREKIT_ENABLE_MIMALLOC_BACKEND)
   set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
   set(MI_BUILD_BENCH OFF CACHE BOOL "" FORCE)
   set(MI_USE_CXX OFF CACHE BOOL "" FORCE)
-  add_subdirectory("${COREKIT_MIMALLOC_DIR}" "${CMAKE_BINARY_DIR}/3party/mimalloc" EXCLUDE_FROM_ALL)
+  add_subdirectory("${_corekit_mimalloc_source_dir}" "${CMAKE_BINARY_DIR}/3party/mimalloc" EXCLUDE_FROM_ALL)
 
   if (TARGET mimalloc-static)
     set(_corekit_mi_target mimalloc-static)
@@ -171,8 +232,11 @@ endif()
 
 # tbbmalloc (optional, local source only)
 if (COREKIT_ENABLE_TBBMALLOC_BACKEND)
-  if (NOT EXISTS "${COREKIT_ONETBB_DIR}/CMakeLists.txt")
-    message(FATAL_ERROR "COREKIT_ENABLE_TBBMALLOC_BACKEND=ON but missing ${COREKIT_ONETBB_DIR}")
+  _corekit_resolve_source_dep(_corekit_onetbb_source_dir oneTBB "${COREKIT_ONETBB_DIR}" "${COREKIT_ONETBB_URL}")
+  if (NOT _corekit_onetbb_source_dir)
+    message(FATAL_ERROR
+      "COREKIT_ENABLE_TBBMALLOC_BACKEND=ON but oneTBB was not found. "
+      "Provide ${COREKIT_ONETBB_DIR}, or leave COREKIT_AUTO_FETCH_DEPS=ON.")
   endif()
 
   set(_corekit_tbbmalloc_target "")
@@ -180,7 +244,7 @@ if (COREKIT_ENABLE_TBBMALLOC_BACKEND)
   set(TBB_STRICT OFF CACHE BOOL "" FORCE)
   set(TBB_EXAMPLES OFF CACHE BOOL "" FORCE)
   set(TBBMALLOC_BUILD ON CACHE BOOL "" FORCE)
-  add_subdirectory("${COREKIT_ONETBB_DIR}" "${CMAKE_BINARY_DIR}/3party/oneTBB" EXCLUDE_FROM_ALL)
+  add_subdirectory("${_corekit_onetbb_source_dir}" "${CMAKE_BINARY_DIR}/3party/oneTBB" EXCLUDE_FROM_ALL)
 
   if (TARGET TBB::tbbmalloc)
     set(_corekit_tbbmalloc_target TBB::tbbmalloc)
@@ -232,7 +296,7 @@ target_include_directories(corekit
         ${_COREKIT_TINYXML2_DIR}
 )
 if (COREKIT_EXTRA_DEFS)
-  target_compile_definitions(corekit PRIVATE ${COREKIT_EXTRA_DEFS})
+  target_compile_definitions(corekit PUBLIC ${COREKIT_EXTRA_DEFS})
 endif()
 target_link_libraries(corekit
     PRIVATE
@@ -318,4 +382,3 @@ if (COREKIT_BUILD_EXAMPLES)
   configure_file(config/logging.conf ${CMAKE_CURRENT_BINARY_DIR}/config/logging.conf COPYONLY)
   configure_file(config/corekit.json ${CMAKE_CURRENT_BINARY_DIR}/config/corekit.json COPYONLY)
 endif()
-

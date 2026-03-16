@@ -21,7 +21,7 @@ A dedicated C++ utility toolkit for engineering and simulation workloads, delive
 - Third-party vendor entry folder: `3party/`.
 
 ## Local third-party dependencies
-This project now uses local dependencies from `3party/` (no `FetchContent` online pull in normal build flow).
+This project prefers local dependencies from `3party/` and can auto-fetch missing sources during CMake configure when network access is available.
 
 Required layout:
 - `3party/glog`
@@ -30,6 +30,7 @@ Required layout:
 
 CMake options:
 - `COREKIT_THIRDPARTY_DIR` (default: `${CMAKE_SOURCE_DIR}/3party`)
+- `COREKIT_AUTO_FETCH_DEPS=ON|OFF`
 - `COREKIT_ENABLE_MIMALLOC_BACKEND=ON|OFF`
 - `COREKIT_ENABLE_TBBMALLOC_BACKEND=ON|OFF`
 
@@ -135,4 +136,3 @@ Output includes:
 - `new_delete`
 - `object_pool`
 - `global_allocator[system|mimalloc|tbb]`
-
