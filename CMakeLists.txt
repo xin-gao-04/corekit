@@ -298,6 +298,30 @@ target_include_directories(corekit
 if (COREKIT_EXTRA_DEFS)
   target_compile_definitions(corekit PUBLIC ${COREKIT_EXTRA_DEFS})
 endif()
+
+# ── tinyxml2 ODR isolation ────────────────────────────────────────────────────
+# corekit bundles tinyxml2 v10; BehaviorTree.CPP bundles tinyxml2 v11.
+# On macOS, inline / template methods from both headers are compiled as
+# "weak-def" symbols and the dynamic linker coalesces them — whichever is
+# in the main executable wins, causing v10 objects to be operated on by v11
+# code (or vice versa), corrupting struct offsets.
+# Fix: compile the tinyxml2 translation units with -fvisibility=hidden so
+# their symbols are NOT exported from libcorekit.dylib and therefore do NOT
+# participate in weak-def coalescing.
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  # TINYXML2_LIB= suppresses the __attribute__((visibility("default"))) that
+  # tinyxml2.h applies to every class, so -fvisibility=hidden can take effect.
+  # The #ifndef TINYXML2_LIB guard in tinyxml2.h (patched) prevents the header
+  # from overriding the empty definition we inject here.
+  set_source_files_properties(
+      "${_COREKIT_TINYXML2_DIR}/tinyxml2.cpp"
+      "${CMAKE_CURRENT_SOURCE_DIR}/src/xml/tinyxml2_doc_impl.cpp"
+      PROPERTIES
+        COMPILE_OPTIONS   "-fvisibility=hidden;-fvisibility-inlines-hidden"
+        COMPILE_DEFINITIONS "TINYXML2_LIB="
+  )
+endif()
+
 target_link_libraries(corekit
     PRIVATE
         glog::glog
