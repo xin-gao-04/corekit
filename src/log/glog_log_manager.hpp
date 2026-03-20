@@ -5,10 +5,12 @@
 namespace corekit {
 namespace log {
 
-class LogManagerAdapter : public ILogManager {
+// glog 日志管理器，直接实现 ILogManager 接口。
+// 通过工厂函数 corekit_create_log_manager() 创建，无需外部感知此类。
+class GlogLogManager : public ILogManager {
  public:
-  LogManagerAdapter() {}
-  ~LogManagerAdapter() override {}
+  GlogLogManager() {}
+  ~GlogLogManager() override {}
 
   const char* Name() const override;
   std::uint32_t ApiVersion() const override;
@@ -23,4 +25,3 @@ class LogManagerAdapter : public ILogManager {
 
 }  // namespace log
 }  // namespace corekit
-

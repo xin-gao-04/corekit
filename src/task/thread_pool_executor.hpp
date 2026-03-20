@@ -28,28 +28,31 @@ class ThreadPoolExecutor : public IExecutor {
   std::uint32_t ApiVersion() const override;
   void Release() override;
 
-  api::Status Submit(void (*fn)(void*), void* user_data) override;
-  api::Result<TaskId> SubmitEx(void (*fn)(void*), void* user_data,
+  // 虚接口（std::function-based 主 API）
+  api::Status Submit(std::function<void()> fn) override;
+  api::Result<TaskId> SubmitEx(std::function<void()> fn,
                                const TaskSubmitOptions& options) override;
   api::Result<TaskId> SubmitWithKey(std::uint64_t serial_key,
-                                    void (*fn)(void*), void* user_data) override;
+                                    std::function<void()> fn) override;
   api::Status ParallelFor(std::size_t begin, std::size_t end, std::size_t grain,
-                          void (*fn)(std::size_t, void*), void* user_data) override;
+                          std::function<void(std::size_t)> fn) override;
+
   api::Status Wait(TaskId id, std::uint32_t timeout_ms) override;
   api::Status WaitBatch(const TaskId* ids, std::size_t count,
                         std::uint32_t timeout_ms) override;
   api::Status TryCancel(TaskId id) override;
-  api::Status WaitAllSubmittedBefore() override;
   api::Status WaitAll() override;
+
+  api::Result<bool> IsTaskSucceeded(TaskId id) const override;
   api::Result<ExecutorStats> QueryStats() const override;
   api::Status Reconfigure(const ExecutorOptions& options) override;
-  api::Status SetSchedulingPolicy(ExecutorPolicy policy) override;
 
  private:
   struct TaskState {
     bool started = false;
     bool done = false;
     bool canceled = false;
+    bool succeeded = false;  // 任务无异常完成时为 true
     std::condition_variable cv;
   };
 
@@ -60,8 +63,7 @@ class ThreadPoolExecutor : public IExecutor {
   };
 
   std::size_t NormalizeWorkerCount(std::size_t worker_count) const;
-  api::Status Enqueue(const std::function<void()>& fn,
-                      const TaskSubmitOptions& options);
+  api::Status Enqueue(std::function<void()> fn, const TaskSubmitOptions& options);
   std::size_t PickNextTaskIndexLocked() const;
   TaskId NextTaskIdLocked();
   void MarkTaskDone(TaskId id, bool executed, bool failed);

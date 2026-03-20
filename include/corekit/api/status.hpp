@@ -31,6 +31,7 @@ enum class ErrorModule : std::uint8_t {
   kConcurrent = 0x40,
   kTask = 0x50,
   kJson = 0x60,
+  kXml  = 0x70,
 };
 
 struct ErrorCatalogEntry {

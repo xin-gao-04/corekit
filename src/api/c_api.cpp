@@ -5,7 +5,7 @@
 #include "corekit/api/version.hpp"
 #include "memory/system_allocator.hpp"
 #include "memory/slab_pool_impl.hpp"
-#include "log/log_manager_adapter.hpp"
+#include "log/glog_log_manager.hpp"
 #include "task/simple_task_graph.hpp"
 #include "task/thread_pool_executor.hpp"
 
@@ -14,7 +14,7 @@ extern "C" {
 std::uint32_t corekit_get_api_version() { return corekit::api::kApiVersion; }
 
 corekit::log::ILogManager* corekit_create_log_manager() {
-  return new corekit::log::LogManagerAdapter();
+  return new corekit::log::GlogLogManager();
 }
 
 void corekit_destroy_log_manager(corekit::log::ILogManager* manager) {
@@ -68,4 +68,3 @@ corekit::io::IFile* corekit_create_file() {
 void corekit_destroy_file(corekit::io::IFile* file) { delete file; }
 
 }
-

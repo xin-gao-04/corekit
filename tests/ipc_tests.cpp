@@ -242,6 +242,10 @@ bool TestIpcBurstThroughputSmoke() {
 }  // namespace
 
 int main() {
+#if !defined(_WIN32)
+  std::printf("[SKIP] ipc_tests require the Windows shared-memory backend\n");
+  return 0;
+#else
   struct TestCase {
     const char* name;
     bool (*fn)();
@@ -265,8 +269,8 @@ int main() {
   }
 
   return failed == 0 ? 0 : 1;
+#endif
 }
-
 
 
 

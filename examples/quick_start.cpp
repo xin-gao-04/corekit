@@ -35,22 +35,17 @@ static void demo_executor_lambda() {
 
   int result = 0;
 
-  // 用 SubmitLambda 直接提交 lambda，无需手动 void* 包装。
-  corekit::task::SubmitLambda(exec.Get(), [&result]() {
-    result = 42;
-  });
+  // 直接提交 lambda。
+  exec->Submit([&result]() { result = 42; });
   exec->WaitAll();
   std::printf("  Lambda result: %d\n", result);
 
-  // SubmitLambdaEx — 带优先级和标签
+  // SubmitEx — 带优先级
   corekit::task::TaskSubmitOptions opts;
   opts.priority = corekit::task::TaskPriority::kHigh;
-  opts.tag = 100;
 
   corekit::api::Result<corekit::task::TaskId> tid =
-      corekit::task::SubmitLambdaEx(exec.Get(), [&result]() {
-        result = 99;
-      }, opts);
+      exec->SubmitEx([&result]() { result = 99; }, opts);
 
   if (tid.ok()) {
     exec->Wait(tid.value(), 0);
@@ -72,11 +67,9 @@ static void demo_parallel_for() {
   for (std::size_t i = 0; i < N; ++i) arr[i] = 0;
 
   // 将 [0, N) 按 grain=100 切分后并行执行。
-  exec->ParallelFor(0, N, 100,
-      [](std::size_t index, void* ctx) {
-        static_cast<int*>(ctx)[index] = static_cast<int>(index * 2);
-      },
-      arr);
+  exec->ParallelFor(0, N, 100, [&arr](std::size_t index) {
+    arr[index] = static_cast<int>(index * 2);
+  });
 
   int sum = 0;
   for (std::size_t i = 0; i < N; ++i) sum += arr[i];
@@ -97,15 +90,11 @@ static void demo_task_graph() {
   int order[3] = {0, 0, 0};
   int counter = 0;
 
-  auto add_task = [&](const char* name, int idx) -> std::uint64_t {
-    struct Ctx { int* order; int* counter; int idx; };
-    Ctx* c = new Ctx{order, &counter, idx};
-    corekit::api::Result<std::uint64_t> r = graph->AddTask(
-        [](void* p) {
-          Ctx* ctx = static_cast<Ctx*>(p);
-          ctx->order[ctx->idx] = ++(*ctx->counter);
-          delete ctx;
-        }, c);
+  auto add_task = [&](const char*, int idx) -> std::uint64_t {
+    corekit::api::Result<corekit::task::TaskId> r = graph->AddTask(
+        [&order, &counter, idx]() {
+          order[idx] = ++counter;
+        });
     return r.value();
   };
 

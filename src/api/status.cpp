@@ -85,6 +85,8 @@ const char* ErrorModuleName(ErrorModule module) {
       return "task";
     case ErrorModule::kJson:
       return "json";
+    case ErrorModule::kXml:
+      return "xml";
     default:
       return "unknown";
   }

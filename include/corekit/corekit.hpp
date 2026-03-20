@@ -5,6 +5,7 @@
 #include "corekit/api/status.hpp"
 #include "corekit/api/unique_handle.hpp"
 #include "corekit/api/version.hpp"
+#include "corekit/concurrent/containers.hpp"
 #include "corekit/concurrent/i_map.hpp"
 #include "corekit/concurrent/i_queue.hpp"
 #include "corekit/concurrent/i_ring_buffer.hpp"
@@ -23,4 +24,5 @@
 #include "corekit/task/executor_helpers.hpp"
 #include "corekit/task/iexecutor.hpp"
 #include "corekit/task/i_task_graph.hpp"
+#include "corekit/xml/i_xml_doc.hpp"
 

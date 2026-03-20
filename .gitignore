@@ -3,5 +3,12 @@ build_new/
 build_core/
 build_clean/
 build_*/
+build.codex/
 logs/
 corekit_mem_*.json
+.claude/
+
+# zip 自动解压目录（zip 本身入库，解压目录忽略）
+third_party/tinyxml2/
+third_party/*__tmp_extract/
+.DS_Store
