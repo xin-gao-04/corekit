@@ -7,13 +7,6 @@
 
 #include "corekit/api/version.hpp"
 
-#if defined(_WIN32)
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
-
 namespace corekit {
 namespace ipc {
 namespace {
@@ -24,7 +17,11 @@ static const std::uint32_t kFrameData = 0;
 static const std::uint32_t kFrameWrap = 1;
 
 std::string BuildSharedName(const std::string& name) {
+#if defined(_WIN32)
   return std::string("Local\\corekit.") + name;
+#else
+  return std::string("/corekit.") + name;
+#endif
 }
 
 std::string ToString(std::uint32_t value) {
@@ -57,13 +54,13 @@ SharedMemoryChannel::SharedMemoryChannel()
       local_would_block_recv_(0),
       local_pending_drop_(0),
       opened_(false),
-#if defined(_WIN32)
-      mapping_handle_(NULL),
-      mapping_view_(NULL),
-#endif
+      backend_(NULL),
       header_(NULL) {}
 
-SharedMemoryChannel::~SharedMemoryChannel() { Close(); }
+SharedMemoryChannel::~SharedMemoryChannel() {
+  Close();
+  delete backend_;
+}
 
 const char* SharedMemoryChannel::Name() const { return "corekit.ipc.shm_ring_v2"; }
 
@@ -218,17 +215,11 @@ api::Status SharedMemoryChannel::OpenServer(const ChannelOptions& options) {
   if (!st.ok()) {
     return st;
   }
-#if defined(_WIN32)
   options_ = options;
   shared_name_ = BuildSharedName(options_.name);
   local_outbox_.clear();
   local_pending_drop_.store(0, std::memory_order_relaxed);
   return MapAsServer(options_);
-#else
-  (void)options;
-  return api::Status(api::StatusCode::kUnsupported,
-                     "OpenServer is currently implemented for Windows only");
-#endif
 }
 
 api::Status SharedMemoryChannel::OpenClient(const ChannelOptions& options) {
@@ -238,30 +229,17 @@ api::Status SharedMemoryChannel::OpenClient(const ChannelOptions& options) {
   if (options.name.empty()) {
     return api::Status(api::StatusCode::kInvalidArgument, "channel name is empty");
   }
-#if defined(_WIN32)
   options_ = options;
   shared_name_ = BuildSharedName(options.name);
   local_outbox_.clear();
   local_pending_drop_.store(0, std::memory_order_relaxed);
   return MapAsClient(options);
-#else
-  (void)options;
-  return api::Status(api::StatusCode::kUnsupported,
-                     "OpenClient is currently implemented for Windows only");
-#endif
 }
 
 api::Status SharedMemoryChannel::Close() {
-#if defined(_WIN32)
-  if (mapping_view_ != NULL) {
-    UnmapViewOfFile(mapping_view_);
-    mapping_view_ = NULL;
+  if (backend_ != NULL) {
+    backend_->Close();
   }
-  if (mapping_handle_ != NULL) {
-    CloseHandle(reinterpret_cast<HANDLE>(mapping_handle_));
-    mapping_handle_ = NULL;
-  }
-#endif
   local_outbox_.clear();
   header_ = NULL;
   opened_ = false;
@@ -412,33 +390,24 @@ ChannelStats SharedMemoryChannel::GetStats() const {
 }
 
 api::Status SharedMemoryChannel::MapAsServer(const ChannelOptions& options) {
-#if defined(_WIN32)
   const std::size_t total_bytes = TotalBytes();
-  if (total_bytes == 0 || total_bytes > static_cast<std::size_t>(std::numeric_limits<DWORD>::max())) {
+  if (total_bytes == 0) {
     return api::Status(api::StatusCode::kInvalidArgument, "channel memory size is too large");
   }
-  const DWORD bytes = static_cast<DWORD>(total_bytes);
-  HANDLE mapping = CreateFileMappingA(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, bytes,
-                                      shared_name_.c_str());
-  if (mapping == NULL) {
-    return api::Status(api::StatusCode::kIoError, "CreateFileMapping failed");
-  }
-  if (GetLastError() == ERROR_ALREADY_EXISTS) {
-    CloseHandle(mapping);
-    return api::Status(api::StatusCode::kAlreadyInitialized,
-                       "channel already exists, server should be unique");
+
+  if (backend_ == NULL) {
+    backend_ = CreateShmBackend();
   }
 
-  void* view = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, bytes);
-  if (view == NULL) {
-    CloseHandle(mapping);
-    return api::Status(api::StatusCode::kIoError, "MapViewOfFile failed");
+  api::Status st = backend_->Create(shared_name_, total_bytes);
+  if (!st.ok()) {
+    return st;
   }
 
-  mapping_handle_ = mapping;
-  mapping_view_ = view;
-  header_ = reinterpret_cast<SharedHeader*>(mapping_view_);
-  std::memset(mapping_view_, 0, bytes);
+  void* base = backend_->BaseAddress();
+  std::memset(base, 0, total_bytes);
+
+  header_ = reinterpret_cast<SharedHeader*>(base);
 
   const std::uint32_t stride = static_cast<std::uint32_t>(FrameBytes(options.message_max_bytes));
   const std::uint32_t target = stride * options.capacity;
@@ -458,35 +427,26 @@ api::Status SharedMemoryChannel::MapAsServer(const ChannelOptions& options) {
 
   opened_ = true;
   return api::Status::Ok();
-#else
-  (void)options;
-  return api::Status(api::StatusCode::kUnsupported,
-                     "MapAsServer is currently implemented for Windows only");
-#endif
 }
 
 api::Status SharedMemoryChannel::MapAsClient(const ChannelOptions&) {
-#if defined(_WIN32)
-  HANDLE mapping = OpenFileMappingA(FILE_MAP_ALL_ACCESS, FALSE, shared_name_.c_str());
-  if (mapping == NULL) {
-    return api::Status(api::StatusCode::kNotFound, "OpenFileMapping failed, server not ready");
+  if (backend_ == NULL) {
+    backend_ = CreateShmBackend();
   }
 
-  void* header_view = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(SharedHeader));
-  if (header_view == NULL) {
-    CloseHandle(mapping);
-    return api::Status(api::StatusCode::kIoError, "MapViewOfFile header failed");
+  // First map just enough to read the header.
+  api::Status st = backend_->Open(shared_name_, sizeof(SharedHeader));
+  if (!st.ok()) {
+    return st;
   }
 
-  SharedHeader* hdr = reinterpret_cast<SharedHeader*>(header_view);
+  SharedHeader* hdr = reinterpret_cast<SharedHeader*>(backend_->BaseAddress());
   if (hdr->magic != kChannelMagic || hdr->version != kChannelVersion) {
-    UnmapViewOfFile(header_view);
-    CloseHandle(mapping);
+    backend_->Close();
     return api::Status(api::StatusCode::kInternalError, "channel header magic/version mismatch");
   }
   if (hdr->ring_bytes == 0 || ((hdr->ring_bytes & (hdr->ring_bytes - 1)) != 0)) {
-    UnmapViewOfFile(header_view);
-    CloseHandle(mapping);
+    backend_->Close();
     return api::Status(api::StatusCode::kInternalError, "channel ring_bytes is invalid");
   }
 
@@ -494,27 +454,17 @@ api::Status SharedMemoryChannel::MapAsClient(const ChannelOptions&) {
   options_.message_max_bytes = hdr->message_max_bytes;
   const std::size_t total = sizeof(SharedHeader) + static_cast<std::size_t>(hdr->ring_bytes);
 
-  UnmapViewOfFile(header_view);
-  void* full_view = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, total);
-  if (full_view == NULL) {
-    CloseHandle(mapping);
-    return api::Status(api::StatusCode::kIoError, "MapViewOfFile full failed");
+  // Re-map with full size.
+  backend_->Close();
+  st = backend_->Open(shared_name_, total);
+  if (!st.ok()) {
+    return st;
   }
 
-  mapping_handle_ = mapping;
-  mapping_view_ = full_view;
-  header_ = reinterpret_cast<SharedHeader*>(mapping_view_);
+  header_ = reinterpret_cast<SharedHeader*>(backend_->BaseAddress());
   opened_ = true;
   return api::Status::Ok();
-#else
-  return api::Status(api::StatusCode::kUnsupported,
-                     "MapAsClient is currently implemented for Windows only");
-#endif
 }
 
 }  // namespace ipc
 }  // namespace corekit
-
-
-
-

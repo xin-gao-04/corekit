@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "corekit/api/i_component.hpp"
 #include "corekit/api/status.hpp"
 #include "corekit/api/version.hpp"
 #include "corekit/log/log_types.hpp"
@@ -9,18 +10,8 @@
 namespace corekit {
 namespace log {
 
-class ILogManager {
+class ILogManager : public api::IComponent {
  public:
-  virtual ~ILogManager() {}
-
-  // 返回实现名称，便于排查“当前到底绑定了哪个实现”。
-  virtual const char* Name() const = 0;
-
-  // 返回实现遵循的 API 版本，用于运行期兼容性检查。
-  virtual std::uint32_t ApiVersion() const = 0;
-
-  // 释放对象本身。仅对本接口实例有效，调用后指针失效。
-  virtual void Release() = 0;
 
   // 初始化日志系统。
   // 典型时机：进程启动后尽早调用一次。
@@ -61,4 +52,3 @@ class ILogManager {
 
 }  // namespace log
 }  // namespace corekit
-

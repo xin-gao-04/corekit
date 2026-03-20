@@ -91,6 +91,25 @@ class Result {
   const Status& status() const { return status_; }
   const T& value() const { return value_; }
   T& value() { return value_; }
+  bool has_value() const { return has_value_; }
+
+  /// Return the contained value or a fallback when not ok.
+  const T& ValueOr(const T& fallback) const { return has_value_ ? value_ : fallback; }
+
+  /// Transform the contained value. Returns error status unchanged.
+  template <typename Fn>
+  auto Map(Fn&& fn) const -> Result<decltype(fn(std::declval<const T&>()))> {
+    typedef decltype(fn(std::declval<const T&>())) U;
+    if (ok()) return Result<U>(fn(value_));
+    return Result<U>(status_);
+  }
+
+  /// Chain into another Result-returning operation. Returns error status unchanged.
+  template <typename Fn>
+  auto AndThen(Fn&& fn) const -> decltype(fn(std::declval<const T&>())) {
+    if (ok()) return fn(value_);
+    return decltype(fn(std::declval<const T&>()))(status_);
+  }
 
  private:
   Status status_;

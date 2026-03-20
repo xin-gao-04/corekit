@@ -1,6 +1,14 @@
 {
   "memory": {
     "backend": "system",
-    "strict_backend": true
+    "strict_backend": true,
+    "pool": {
+      "name": "system",
+      "block_size": 65536,
+      "max_bytes": 0,
+      "max_cached_blocks": 64,
+      "enable_guard_bytes": false,
+      "thread_safe": true
+    }
   }
 }

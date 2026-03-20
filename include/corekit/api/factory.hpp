@@ -14,6 +14,10 @@ class IChannel;
 }
 namespace memory {
 class IAllocator;
+class IMemoryPool;
+}
+namespace io {
+class IFile;
 }
 namespace task {
 class ITaskGraph;
@@ -53,11 +57,23 @@ COREKIT_API corekit::task::IExecutor* corekit_create_executor_v2(
 // Destroy an executor created by corekit_create_executor.
 COREKIT_API void corekit_destroy_executor(corekit::task::IExecutor* executor);
 
+// Create a slab-based memory pool instance.
+COREKIT_API corekit::memory::IMemoryPool* corekit_create_memory_pool();
+
+// Destroy a memory pool created by corekit_create_memory_pool.
+COREKIT_API void corekit_destroy_memory_pool(corekit::memory::IMemoryPool* pool);
+
 // Create a task graph instance.
 COREKIT_API corekit::task::ITaskGraph* corekit_create_task_graph();
 
 // Destroy a task graph created by corekit_create_task_graph.
 COREKIT_API void corekit_destroy_task_graph(corekit::task::ITaskGraph* graph);
+
+// Create a file I/O instance.
+COREKIT_API corekit::io::IFile* corekit_create_file();
+
+// Destroy a file created by corekit_create_file.
+COREKIT_API void corekit_destroy_file(corekit::io::IFile* file);
 
 }
 

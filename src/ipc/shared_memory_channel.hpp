@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "corekit/ipc/i_channel.hpp"
+#include "ipc/shm_backend.hpp"
 
 namespace corekit {
 namespace ipc {
@@ -78,11 +79,7 @@ class SharedMemoryChannel : public IChannel {
   std::deque<PendingMessage> local_outbox_;
   bool opened_;
 
-#if defined(_WIN32)
-  void* mapping_handle_;
-  void* mapping_view_;
-#endif
-
+  IShmBackend* backend_;
   SharedHeader* header_;
 };
 

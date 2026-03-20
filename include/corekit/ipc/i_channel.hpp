@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string>
 
+#include "corekit/api/i_component.hpp"
 #include "corekit/api/status.hpp"
 
 namespace corekit {
@@ -27,20 +28,9 @@ struct ChannelStats {
   std::uint64_t would_block_recv = 0;   // 接收时会阻塞的次数
 };
 
-class IChannel {
+class IChannel : public api::IComponent {
  public:
-  virtual ~IChannel() {}
-
-  // 返回实现名称，用于日志与故障排查。
-  virtual const char* Name() const = 0;
-
-  // 返回 API 版本，便于运行期检测动态库兼容性。
-  virtual std::uint32_t ApiVersion() const = 0;
-
-  // 释放实例对象本身。调用后对象不可再使用。
-  virtual void Release() = 0;
-
-  // 以“服务端”角色创建通道并初始化共享资源。
+  // 以”服务端”角色创建通道并初始化共享资源。
   // 参数：
   // - options.name: 通道唯一名，建议业务自定义前缀。
   // - options.capacity: 环形队列槽位数，必须 > 0。

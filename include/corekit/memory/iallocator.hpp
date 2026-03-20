@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "corekit/api/i_component.hpp"
 #include "corekit/api/status.hpp"
 #include "corekit/api/version.hpp"
 
@@ -25,22 +26,10 @@ struct AllocatorStats {
   std::uint64_t bytes_peak = 0;
 };
 
-class IAllocator {
+class IAllocator : public api::IComponent {
  public:
-  virtual ~IAllocator() {}
-
-  // 返回实现名称，便于日志中快速定位当前实际使用的分配器实现。
-  virtual const char* Name() const = 0;
-
   // 返回当前后端名称，便于观测当前真实分配路径。
   virtual const char* BackendName() const = 0;
-
-  // 返回当前对象遵循的接口版本。
-  // 用途：运行期检查 DLL 与头文件是否匹配。
-  virtual std::uint32_t ApiVersion() const = 0;
-
-  // 释放实例对象本身。调用后指针立即失效。
-  virtual void Release() = 0;
 
   // 返回分配器能力描述。
   virtual AllocatorCaps Caps() const = 0;

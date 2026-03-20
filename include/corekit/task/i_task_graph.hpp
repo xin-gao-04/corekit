@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "corekit/api/i_component.hpp"
 #include "corekit/api/status.hpp"
 #include "corekit/api/version.hpp"
 #include "corekit/task/iexecutor.hpp"
@@ -28,19 +29,8 @@ struct GraphRunStats {
   std::uint64_t canceled = 0;
 };
 
-class ITaskGraph {
+class ITaskGraph : public api::IComponent {
  public:
-  virtual ~ITaskGraph() {}
-
-  // 返回实现名称。
-  virtual const char* Name() const = 0;
-
-  // 返回当前对象遵循的接口版本。
-  virtual std::uint32_t ApiVersion() const = 0;
-
-  // 释放实例对象本身。调用后对象失效。
-  virtual void Release() = 0;
-
   // 新增一个任务节点。
   // 参数：
   // - fn: 任务函数，不允许为空。

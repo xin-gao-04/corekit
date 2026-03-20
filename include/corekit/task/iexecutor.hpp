@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "corekit/api/i_component.hpp"
 #include "corekit/api/status.hpp"
 #include "corekit/api/version.hpp"
 
@@ -48,19 +49,8 @@ struct ExecutorStats {
   std::size_t queue_high_watermark = 0;
 };
 
-class IExecutor {
+class IExecutor : public api::IComponent {
  public:
-  virtual ~IExecutor() {}
-
-  // 返回实现名称，便于定位运行时使用的是哪种调度后端。
-  virtual const char* Name() const = 0;
-
-  // 返回当前对象遵循的接口版本。
-  virtual std::uint32_t ApiVersion() const = 0;
-
-  // 释放实例对象本身。调用后指针失效。
-  virtual void Release() = 0;
-
   // 提交一个异步任务。
   // 参数：
   // - fn: 任务函数指针，不允许为 nullptr。

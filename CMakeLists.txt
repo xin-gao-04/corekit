@@ -127,13 +127,23 @@ if (COREKIT_ENABLE_TBBMALLOC_BACKEND)
   list(APPEND COREKIT_EXTRA_DEFS COREKIT_ENABLE_TBBMALLOC_BACKEND=1)
 endif()
 
+# IPC platform backend selection
+if(WIN32)
+  set(COREKIT_SHM_BACKEND_SOURCE src/ipc/shm_backend_win32.cpp)
+else()
+  set(COREKIT_SHM_BACKEND_SOURCE src/ipc/shm_backend_posix.cpp)
+endif()
+
 add_library(corekit
     src/api/status.cpp
     src/log_manager.cpp
     src/log/log_manager_adapter.cpp
     src/ipc/shared_memory_channel.cpp
+    ${COREKIT_SHM_BACKEND_SOURCE}
     src/json/json_codec.cpp
     ${COREKIT_MEMORY_SOURCES}
+    src/memory/system_pool.cpp
+    src/io/file_utils.cpp
     src/task/thread_pool_executor.cpp
     src/task/simple_task_graph.cpp
     src/api/c_api.cpp
@@ -158,6 +168,10 @@ target_link_libraries(corekit
         glog::glog
         ${COREKIT_EXTRA_LIBS}
 )
+# POSIX shared memory requires -lrt on Linux.
+if(UNIX AND NOT APPLE)
+  target_link_libraries(corekit PRIVATE rt)
+endif()
 
 add_library(corekit::corekit ALIAS corekit)
 
@@ -173,6 +187,15 @@ if (COREKIT_BUILD_EXAMPLES)
 
   add_executable(ipc_client_example examples/ipc_client.cpp)
   target_link_libraries(ipc_client_example PRIVATE corekit)
+
+  add_executable(quick_start examples/quick_start.cpp)
+  target_link_libraries(quick_start PRIVATE corekit)
+
+  add_executable(memory_pool_demo examples/memory_pool_demo.cpp)
+  target_link_libraries(memory_pool_demo PRIVATE corekit)
+
+  add_executable(task_demo examples/task_demo.cpp)
+  target_link_libraries(task_demo PRIVATE corekit)
 endif()
 
 include(GNUInstallDirs)

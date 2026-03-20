@@ -1,8 +1,10 @@
 #include "corekit/api/factory.hpp"
 
+#include "io/file_impl.hpp"
 #include "ipc/shared_memory_channel.hpp"
 #include "corekit/api/version.hpp"
 #include "memory/system_allocator.hpp"
+#include "memory/slab_pool_impl.hpp"
 #include "log/log_manager_adapter.hpp"
 #include "task/simple_task_graph.hpp"
 #include "task/thread_pool_executor.hpp"
@@ -47,11 +49,23 @@ corekit::task::IExecutor* corekit_create_executor_v2(
 
 void corekit_destroy_executor(corekit::task::IExecutor* executor) { delete executor; }
 
+corekit::memory::IMemoryPool* corekit_create_memory_pool() {
+  return new corekit::memory::SlabPoolImpl();
+}
+
+void corekit_destroy_memory_pool(corekit::memory::IMemoryPool* pool) { delete pool; }
+
 corekit::task::ITaskGraph* corekit_create_task_graph() {
   return new corekit::task::SimpleTaskGraph();
 }
 
 void corekit_destroy_task_graph(corekit::task::ITaskGraph* graph) { delete graph; }
+
+corekit::io::IFile* corekit_create_file() {
+  return new corekit::io::StdFile();
+}
+
+void corekit_destroy_file(corekit::io::IFile* file) { delete file; }
 
 }
 
