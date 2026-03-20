@@ -102,7 +102,7 @@ function(_corekit_unzip_dep name zip_path dest_parent)
 endfunction()
 
 # ── tinyxml2 依赖（zip vendor）────────────────────────────────────────────────
-set(_COREKIT_ZIP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
+set(_COREKIT_ZIP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/3party/")
 set(_COREKIT_TINYXML2_DIR "${_COREKIT_ZIP_DIR}/tinyxml2")
 set(_COREKIT_TINYXML2_ZIP "${_COREKIT_ZIP_DIR}/tinyxml2.zip")
 
