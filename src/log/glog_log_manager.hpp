@@ -19,6 +19,8 @@ class GlogLogManager : public ILogManager {
   api::Status Init(const std::string& app_name, const std::string& config_path) override;
   api::Status Reload(const std::string& config_path) override;
   api::Status Log(LogSeverity severity, const std::string& message) override;
+  api::Status LogWithSource(LogSeverity severity, const std::string& message,
+                            const char* file, int line) override;
   api::Result<LoggingOptions> CurrentOptions() const override;
   api::Status Shutdown() override;
 };

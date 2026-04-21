@@ -339,6 +339,13 @@ char LevelChar(google::LogSeverity severity) {
   return levels[ClampInt(static_cast<int>(severity), 0, 3)];
 }
 
+std::string FormatSourceLocation(const char* file, int line) {
+  if (file == NULL || file[0] == '\0' || line <= 0) return std::string();
+  std::ostringstream out;
+  out << "[" << file << ":" << line << "]";
+  return out.str();
+}
+
 // ── 自定义格式化 Sink ─────────────────────────────────────────────────────────
 
 class FormattedSink : public google::LogSink {
@@ -368,16 +375,18 @@ class FormattedSink : public google::LogSink {
     if (worker_.joinable()) worker_.join();
   }
 
-  void send(google::LogSeverity severity, const char*, const char*, int,
+  void send(google::LogSeverity severity, const char* full_filename, const char*,
+            int line,
             const std::tm*, const char* message, size_t) override {
     if (!stream_.is_open()) return;
     std::string msg = message ? message : "";
     while (!msg.empty() && (msg.back() == '\n' || msg.back() == '\r')) msg.pop_back();
-    const std::string line = FormatLine(severity, msg);
+    const std::string location = FormatSourceLocation(full_filename, line);
+    const std::string formatted_line = FormatLine(severity, location, msg);
 
     if (!async_mode_) {
       std::lock_guard<std::mutex> lock(stream_mu_);
-      stream_ << line << '\n';
+      stream_ << formatted_line << '\n';
       stream_.flush();
       return;
     }
@@ -391,22 +400,28 @@ class FormattedSink : public google::LogSink {
       });
       if (stopping_) return;
     }
-    queue_.push_back(line);
+    queue_.push_back(formatted_line);
     lock.unlock();
     queue_cv_.notify_one();
   }
 
  private:
-  std::string FormatLine(google::LogSeverity severity, const std::string& msg) const {
+  std::string FormatLine(google::LogSeverity severity, const std::string& location,
+                         const std::string& msg) const {
     const char level = LevelChar(severity);
     if (mode_ == Mode::kSimple) {
       std::ostringstream out;
-      out << TimestampPrefix() << " [" << level << "] " << msg;
+      out << TimestampPrefix() << " [" << level << "]";
+      if (!location.empty()) out << " " << location;
+      out << " " << msg;
       return out.str();
     }
     std::ostringstream out;
-    out << "{\"ts\":\"" << TimestampPrefix() << "\",\"level\":\"" << level
-        << "\",\"message\":\"" << JsonEscape(msg) << "\"}";
+    out << "{\"ts\":\"" << TimestampPrefix() << "\",\"level\":\"" << level << "\"";
+    if (!location.empty()) {
+      out << ",\"source\":\"" << JsonEscape(location) << "\"";
+    }
+    out << ",\"message\":\"" << JsonEscape(msg) << "\"}";
     return out.str();
   }
 
@@ -588,9 +603,16 @@ api::Status GlogLogManager::Reload(const std::string& config_path) {
 }
 
 api::Status GlogLogManager::Log(LogSeverity severity, const std::string& message) {
+  return LogWithSource(severity, message, __FILE__, __LINE__);
+}
+
+api::Status GlogLogManager::LogWithSource(LogSeverity severity, const std::string& message,
+                                          const char* file, int line) {
   const google::LogSeverity gs =
       static_cast<google::LogSeverity>(ClampInt(static_cast<int>(severity), 0, 3));
-  google::LogMessage(__FILE__, __LINE__, gs).stream() << message;
+  const char* actual_file = (file != NULL && file[0] != '\0') ? file : __FILE__;
+  const int actual_line = line > 0 ? line : __LINE__;
+  google::LogMessage(actual_file, actual_line, gs).stream() << message;
   return api::Status::Ok();
 }
 

@@ -13,9 +13,7 @@ inline void CorekitLogWrite(ILogManager* logger, LogSeverity severity,
                             const std::string& message, const char* file,
                             int line) {
   if (logger == NULL) return;
-  std::ostringstream os;
-  os << "[" << file << ":" << line << "] " << message;
-  logger->Log(severity, os.str());
+  logger->LogWithSource(severity, message, file, line);
 }
 
 }  // namespace detail

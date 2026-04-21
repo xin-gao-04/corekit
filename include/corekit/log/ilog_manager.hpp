@@ -38,6 +38,15 @@ class ILogManager : public api::IComponent {
   // 线程安全：线程安全。
   virtual api::Status Log(LogSeverity severity, const std::string& message) = 0;
 
+  // 写一条带源码位置的日志。
+  // 默认回退到 Log()，实现类可覆写以保留真实调用点。
+  virtual api::Status LogWithSource(LogSeverity severity, const std::string& message,
+                                    const char* file, int line) {
+    (void)file;
+    (void)line;
+    return Log(severity, message);
+  }
+
   // 读取当前已生效的日志配置快照。
   // 返回：成功时 value 为完整配置。
   // 线程安全：线程安全。
